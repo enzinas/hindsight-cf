@@ -20,7 +20,6 @@ import { operationsRoutes } from './routes/operations';
 import { graphRoutes } from './routes/graph';
 import { tagsRoutes } from './routes/tags';
 import { filesRoutes } from './routes/files';
-import { consolidationRoutes } from './routes/consolidation';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -49,65 +48,129 @@ app.route('/', healthRoutes);
 // =============================================================================
 const api = new Hono<{ Bindings: Env }>();
 
-// Banks (list)
+// Banks (list) — GET /v1/default/banks
 api.get('/banks', async (c) => {
-  // Delegate to banks route handler
   const results = await c.env.DB.prepare('SELECT bank_id FROM banks ORDER BY created_at DESC').all();
   return c.json({
     banks: results.results.map((row: Record<string, unknown>) => row.bank_id as string),
   });
 });
 
+// Chunks — at top level: GET /v1/default/chunks/:chunk_id (not under banks)
+api.route('/chunks', chunksRoutes);
+
 // Bank-scoped routes
 const bank = new Hono<{ Bindings: Env }>();
 
-// Memory operations
+// PUT /banks/:bank_id — update bank
+bank.put('/', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const body = await c.req.json<{ name?: string }>();
+  const { ensureBank } = await import('./routes/banks');
+  await ensureBank(c.env.DB, bankId);
+  if (body.name !== undefined) {
+    await c.env.DB.prepare(
+      "UPDATE banks SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+    ).bind(body.name, bankId).run();
+  }
+  return c.json({ success: true, bank_id: bankId });
+});
+
+// PATCH /banks/:bank_id — update bank
+bank.patch('/', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const body = await c.req.json<{ name?: string }>();
+  const { ensureBank } = await import('./routes/banks');
+  await ensureBank(c.env.DB, bankId);
+  if (body.name !== undefined) {
+    await c.env.DB.prepare(
+      "UPDATE banks SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+    ).bind(body.name, bankId).run();
+  }
+  return c.json({ success: true, bank_id: bankId });
+});
+
+// DELETE /banks/:bank_id — delete bank
+bank.delete('/', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const result = await c.env.DB.prepare('DELETE FROM banks WHERE bank_id = ?').bind(bankId).run();
+  if (result.meta.changes === 0) {
+    return c.json({ error: 'not_found', message: 'Bank not found' }, 404);
+  }
+  return c.json({ success: true, deleted: bankId });
+});
+
+// Memory operations — POST/DELETE /memories, POST /memories/recall, GET /memories/list, etc.
 bank.route('/memories', memoriesRoutes);
 
-// Reflect (also mounted at bank level per original API)
+// Reflect — POST /banks/{bank_id}/reflect
 bank.post('/reflect', async (c) => {
   return c.json({ error: 'not_implemented', message: 'Reflect pipeline not yet implemented' }, 501);
 });
 
-// Entities
+// Entities — GET /entities, GET /entities/:id
 bank.route('/entities', entitiesRoutes);
 
-// Documents
+// Entity regenerate — POST /entities/:entity_id/regenerate
+bank.post('/entities/:entity_id/regenerate', async (c) => {
+  return c.json({ error: 'not_implemented', message: 'Entity regeneration not yet implemented' }, 501);
+});
+
+// Documents — GET /documents, GET /documents/:id, DELETE /documents/:id
 bank.route('/documents', documentsRoutes);
 
-// Chunks
-bank.route('/chunks', chunksRoutes);
-
-// Directives
+// Directives — CRUD
 bank.route('/directives', directivesRoutes);
 
-// Mental Models
+// Mental Models — CRUD
 bank.route('/mental-models', mentalModelsRoutes);
 
-// Operations
+// Mental model refresh — POST /mental-models/:model_id/refresh
+bank.post('/mental-models/:model_id/refresh', async (c) => {
+  return c.json({ error: 'not_implemented', message: 'Mental model refresh not yet implemented' }, 501);
+});
+
+// Operations — GET /operations, GET /operations/:id, DELETE /operations/:id
 bank.route('/operations', operationsRoutes);
 
-// Graph
+// Graph — GET /graph
 bank.route('/graph', graphRoutes);
 
-// Tags
+// Tags — GET /tags
 bank.route('/tags', tagsRoutes);
 
-// Files
+// Files — POST /files/retain
 bank.route('/files', filesRoutes);
 
-// Consolidation
+// Consolidation — POST /consolidate
 bank.post('/consolidate', async (c) => {
   return c.json({ error: 'not_implemented', message: 'Consolidation not yet implemented' }, 501);
 });
 
-// Observations management
+// Observations — DELETE /observations (clear all observations)
 bank.delete('/observations', async (c) => {
   const bankId = c.req.param('bank_id');
   const result = await c.env.DB.prepare(
     "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
   ).bind(bankId).run();
   return c.json({ success: true, deleted_count: result.meta.changes });
+});
+
+// Background — POST /background (original: POST /banks/{bank_id}/background)
+bank.post('/background', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const body = await c.req.json<{ content: string }>();
+
+  const { ensureBank } = await import('./routes/banks');
+  const bankRow = await ensureBank(c.env.DB, bankId);
+  const existingMission = bankRow.mission as string;
+  const newMission = existingMission ? `${existingMission}\n\n${body.content}` : body.content;
+
+  await c.env.DB.prepare(
+    "UPDATE banks SET mission = ?, background = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+  ).bind(newMission, body.content, bankId).run();
+
+  return c.json({ success: true, mission: newMission });
 });
 
 // Bank profile & config (sub-routes of banks)
@@ -139,3 +202,5 @@ export default {
     }
   },
 };
+
+export { app };

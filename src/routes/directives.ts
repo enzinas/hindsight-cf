@@ -45,6 +45,22 @@ app.post('/', async (c) => {
   return c.json(formatDirective(directive as Record<string, unknown>), 201);
 });
 
+// GET /directives/:directive_id — get single directive
+app.get('/:directive_id', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const directiveId = c.req.param('directive_id');
+
+  const directive = await c.env.DB.prepare(
+    'SELECT * FROM directives WHERE id = ? AND bank_id = ?'
+  ).bind(directiveId, bankId).first();
+
+  if (!directive) {
+    return c.json({ error: 'not_found', message: 'Directive not found' }, 404);
+  }
+
+  return c.json(formatDirective(directive as Record<string, unknown>));
+});
+
 // PATCH /directives/:directive_id — update directive
 app.patch('/:directive_id', async (c) => {
   const bankId = c.req.param('bank_id');

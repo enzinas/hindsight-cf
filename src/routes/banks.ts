@@ -1,5 +1,8 @@
 /**
  * Bank management endpoints.
+ *
+ * These routes are mounted under /banks/:bank_id in index.ts,
+ * so bank_id is already a param from the parent router.
  */
 import { Hono } from 'hono';
 import type { Env } from '../env';
@@ -7,16 +10,8 @@ import type { BankProfileResponse, DispositionTraits } from '../types';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// GET /banks — list all banks
-app.get('/', async (c) => {
-  const results = await c.env.DB.prepare('SELECT bank_id FROM banks ORDER BY created_at DESC').all();
-  return c.json({
-    banks: results.results.map((row: Record<string, unknown>) => row.bank_id as string),
-  });
-});
-
-// GET /banks/:bank_id/profile — get bank profile
-app.get('/:bank_id/profile', async (c) => {
+// GET /profile — get bank profile
+app.get('/profile', async (c) => {
   const bankId = c.req.param('bank_id');
   const bank = await ensureBank(c.env.DB, bankId);
 
@@ -31,37 +26,80 @@ app.get('/:bank_id/profile', async (c) => {
   return c.json(response);
 });
 
-// PATCH /banks/:bank_id — update bank
-app.patch('/:bank_id', async (c) => {
+// PUT /profile — update full profile (disposition + mission)
+app.put('/profile', async (c) => {
   const bankId = c.req.param('bank_id');
-  const body = await c.req.json<{ name?: string }>();
+  const body = await c.req.json<{ disposition?: DispositionTraits; mission?: string }>();
   await ensureBank(c.env.DB, bankId);
 
-  if (body.name !== undefined) {
+  if (body.disposition) {
+    const { skepticism, literalism, empathy } = body.disposition;
+    if ([skepticism, literalism, empathy].some((v) => v < 1 || v > 5)) {
+      return c.json({ error: 'validation_error', message: 'Disposition traits must be between 1 and 5' }, 400);
+    }
     await c.env.DB.prepare(
-      "UPDATE banks SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-    ).bind(body.name, bankId).run();
+      "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+    ).bind(JSON.stringify(body.disposition), bankId).run();
+  }
+
+  if (body.mission !== undefined) {
+    await c.env.DB.prepare(
+      "UPDATE banks SET mission = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+    ).bind(body.mission, bankId).run();
   }
 
   return c.json({ success: true, bank_id: bankId });
 });
 
-// DELETE /banks/:bank_id — delete bank
-app.delete('/:bank_id', async (c) => {
+// PUT /profile/disposition — update disposition
+app.put('/profile/disposition', async (c) => {
   const bankId = c.req.param('bank_id');
+  const body = await c.req.json<{ disposition: DispositionTraits }>();
+  await ensureBank(c.env.DB, bankId);
 
-  const result = await c.env.DB.prepare('DELETE FROM banks WHERE bank_id = ?').bind(bankId).run();
-
-  if (result.meta.changes === 0) {
-    return c.json({ error: 'not_found', message: 'Bank not found' }, 404);
+  const { skepticism, literalism, empathy } = body.disposition;
+  if ([skepticism, literalism, empathy].some((v) => v < 1 || v > 5)) {
+    return c.json({ error: 'validation_error', message: 'Disposition traits must be between 1 and 5' }, 400);
   }
 
-  // TODO: Also clean up Vectorize vectors for this bank
-  return c.json({ success: true, deleted: bankId });
+  await c.env.DB.prepare(
+    "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+  ).bind(JSON.stringify(body.disposition), bankId).run();
+
+  return c.json({ success: true, disposition: body.disposition });
 });
 
-// GET /banks/:bank_id/stats — bank statistics
-app.get('/:bank_id/stats', async (c) => {
+// PUT /profile/mission — set mission
+app.put('/profile/mission', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const body = await c.req.json<{ content: string }>();
+  await ensureBank(c.env.DB, bankId);
+
+  await c.env.DB.prepare(
+    "UPDATE banks SET mission = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+  ).bind(body.content, bankId).run();
+
+  return c.json({ success: true, mission: body.content });
+});
+
+// POST /profile/background — merge into mission (deprecated route kept for compat)
+app.post('/profile/background', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const body = await c.req.json<{ content: string }>();
+  const bank = await ensureBank(c.env.DB, bankId);
+
+  const existingMission = bank.mission as string;
+  const newMission = existingMission ? `${existingMission}\n\n${body.content}` : body.content;
+
+  await c.env.DB.prepare(
+    "UPDATE banks SET mission = ?, background = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+  ).bind(newMission, body.content, bankId).run();
+
+  return c.json({ success: true, mission: newMission });
+});
+
+// GET /stats — bank statistics
+app.get('/stats', async (c) => {
   const bankId = c.req.param('bank_id');
   await ensureBank(c.env.DB, bankId);
 
@@ -91,8 +129,8 @@ app.get('/:bank_id/stats', async (c) => {
   });
 });
 
-// GET /banks/:bank_id/config — get bank config
-app.get('/:bank_id/config', async (c) => {
+// GET /config — get bank config
+app.get('/config', async (c) => {
   const bankId = c.req.param('bank_id');
   const bank = await ensureBank(c.env.DB, bankId);
 
@@ -102,8 +140,8 @@ app.get('/:bank_id/config', async (c) => {
   });
 });
 
-// PATCH /banks/:bank_id/config — update bank config
-app.patch('/:bank_id/config', async (c) => {
+// PATCH /config — update bank config
+app.patch('/config', async (c) => {
   const bankId = c.req.param('bank_id');
   const body = await c.req.json<Record<string, unknown>>();
   const bank = await ensureBank(c.env.DB, bankId);
@@ -118,51 +156,16 @@ app.patch('/:bank_id/config', async (c) => {
   return c.json({ bank_id: bankId, config: mergedConfig });
 });
 
-// PUT /banks/:bank_id/profile/disposition — update disposition
-app.put('/:bank_id/profile/disposition', async (c) => {
+// DELETE /config — reset bank config to defaults
+app.delete('/config', async (c) => {
   const bankId = c.req.param('bank_id');
-  const body = await c.req.json<{ disposition: DispositionTraits }>();
-  await ensureBank(c.env.DB, bankId);
-
-  const { skepticism, literalism, empathy } = body.disposition;
-  if ([skepticism, literalism, empathy].some((v) => v < 1 || v > 5)) {
-    return c.json({ error: 'validation_error', message: 'Disposition traits must be between 1 and 5' }, 400);
-  }
-
-  await c.env.DB.prepare(
-    "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(JSON.stringify(body.disposition), bankId).run();
-
-  return c.json({ success: true, disposition: body.disposition });
-});
-
-// POST /banks/:bank_id/profile/background — merge into mission
-app.post('/:bank_id/profile/background', async (c) => {
-  const bankId = c.req.param('bank_id');
-  const body = await c.req.json<{ content: string }>();
-  const bank = await ensureBank(c.env.DB, bankId);
-
-  const existingMission = bank.mission as string;
-  const newMission = existingMission ? `${existingMission}\n\n${body.content}` : body.content;
-
-  await c.env.DB.prepare(
-    "UPDATE banks SET mission = ?, background = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(newMission, body.content, bankId).run();
-
-  return c.json({ success: true, mission: newMission });
-});
-
-// PUT /banks/:bank_id/profile/mission — set mission
-app.put('/:bank_id/profile/mission', async (c) => {
-  const bankId = c.req.param('bank_id');
-  const body = await c.req.json<{ content: string }>();
   await ensureBank(c.env.DB, bankId);
 
   await c.env.DB.prepare(
-    "UPDATE banks SET mission = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(body.content, bankId).run();
+    "UPDATE banks SET config = '{}', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
+  ).bind(bankId).run();
 
-  return c.json({ success: true, mission: body.content });
+  return c.json({ bank_id: bankId, config: {} });
 });
 
 /**

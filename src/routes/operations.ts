@@ -42,6 +42,22 @@ app.get('/', async (c) => {
   });
 });
 
+// GET /operations/:operation_id — get single operation
+app.get('/:operation_id', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const operationId = c.req.param('operation_id');
+
+  const op = await c.env.DB.prepare(
+    'SELECT * FROM async_operations WHERE operation_id = ? AND bank_id = ?'
+  ).bind(operationId, bankId).first();
+
+  if (!op) {
+    return c.json({ error: 'not_found', message: 'Operation not found' }, 404);
+  }
+
+  return c.json(formatOperation(op as Record<string, unknown>));
+});
+
 // DELETE /operations/:operation_id — cancel operation
 app.delete('/:operation_id', async (c) => {
   const bankId = c.req.param('bank_id');
