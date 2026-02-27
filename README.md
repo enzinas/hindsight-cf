@@ -1,24 +1,29 @@
 # hindsight-cf
 
-A Cloudflare Workers port of [hindsight](https://github.com/vectorize-io/hindsight) — an AI agent memory system. Runs entirely on Cloudflare's edge infrastructure with 100% API compatibility with the original.
+A TypeScript port of [**hindsight**](https://github.com/vectorize-io/hindsight) to Cloudflare Workers, built with assistance from [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+
+[Hindsight](https://github.com/vectorize-io/hindsight) is an open-source AI agent memory system created by [Vectorize](https://vectorize.io). It gives LLM agents persistent, structured memory — enabling them to retain facts, recall relevant context, and reflect over accumulated knowledge. This port brings hindsight's full API to Cloudflare's edge infrastructure, replacing the original Python/FastAPI/PostgreSQL stack with TypeScript, Hono, D1, Vectorize, and Workers AI.
+
+For full details on hindsight's memory model, architecture, and concepts (memory banks, disposition traits, directives, mental models, entity graphs, etc.), see the [original hindsight repository](https://github.com/vectorize-io/hindsight).
 
 ## Architecture
 
-| Component | Cloudflare Primitive |
-|---|---|
-| HTTP server | **Cloudflare Worker** (Hono) |
-| Relational storage | **D1** (SQLite) |
-| Vector search | **Vectorize** |
-| Full-text search | **D1 FTS5** |
-| Embeddings | **Workers AI** (`@cf/baai/bge-base-en-v1.5`) |
-| Reranking | **Workers AI** (`@cf/baai/bge-reranker-base`) |
-| LLM (reflect/retain) | **Workers AI** (default) or external API |
-| Object storage | **R2** |
-| Background jobs | **Queues** |
+| Component | Original (hindsight) | This Port (hindsight-cf) |
+|---|---|---|
+| Language | Python | **TypeScript** |
+| HTTP framework | FastAPI | **Hono** on Cloudflare Workers |
+| Relational storage | PostgreSQL | **D1** (SQLite at the edge) |
+| Vector search | pgvector | **Vectorize** |
+| Full-text search | PostgreSQL tsvector | **D1 FTS5** |
+| Embeddings | External API | **Workers AI** (`@cf/baai/bge-base-en-v1.5`) |
+| Reranking | External API | **Workers AI** (`@cf/baai/bge-reranker-base`) |
+| LLM | External API | **Workers AI** (default) or external API |
+| Object storage | Local / S3 | **R2** |
+| Background jobs | Celery / threads | **Queues** |
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 18
+- [Node.js](https://nodejs.org/) >= 18 (dev/build only — not used in production)
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) >= 3.95
 - A Cloudflare account with access to D1, Vectorize, R2, Workers AI, and Queues
 
@@ -82,7 +87,7 @@ The server starts at `http://localhost:8787`. All API endpoints are available un
 ```sh
 npm run dev              # Start local dev server
 npm run typecheck        # Run TypeScript type checking
-npm run test             # Run tests
+npm run test             # Run tests (84 tests including API compatibility)
 npm run test:watch       # Run tests in watch mode
 ```
 
@@ -119,90 +124,122 @@ wrangler secret put EXTERNAL_LLM_MODEL
 
 ## API Reference
 
-All endpoints are 100% compatible with the original [hindsight API](https://github.com/vectorize-io/hindsight). Base path: `/v1/default/banks/{bank_id}/`.
+This port targets 100% route compatibility with the original [hindsight API](https://github.com/vectorize-io/hindsight). All endpoints exist and respond, but some core pipelines are not yet implemented (marked below). See the [original hindsight documentation](https://github.com/vectorize-io/hindsight) for request/response schemas and usage details.
+
+**Legend:**  Implemented |  Stub (returns 501) |  Disabled
 
 ### Health & Monitoring
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | Health check |
-| GET | `/version` | Version info and feature flags |
-| GET | `/metrics` | Metrics (stub) |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `/health` | Health check |
+|  | GET | `/version` | Version info, feature flags, model config |
+|  | GET | `/metrics` | Metrics (placeholder — returns stub text) |
 
 ### Memory Operations
 
-| Method | Path | Description |
-|---|---|---|
-| POST | `/v1/default/banks/{bank_id}/memories/retain` | Retain new memories |
-| POST | `/v1/default/banks/{bank_id}/memories/recall` | Recall memories by query |
-| POST | `/v1/default/banks/{bank_id}/memories/reflect` | Reflect (agentic reasoning over memories) |
-| GET | `/v1/default/banks/{bank_id}/memories/list` | List memory units |
-| GET | `/v1/default/banks/{bank_id}/memories/{id}` | Get a memory unit |
-| DELETE | `/v1/default/banks/{bank_id}/memories/{id}` | Delete a memory unit |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | POST | `.../memories` | **Retain** — ingest new memories (Phase 2: needs fact extraction, embeddings, entity resolution) |
+|  | POST | `.../memories/recall` | **Recall** — retrieve memories by query (Phase 3: needs vector search, FTS5, reranking, fusion) |
+|  | POST | `.../memories/reflect` | **Reflect** — agentic reasoning over memories (Phase 4: needs LLM loop with tool use) |
+|  | GET | `.../memories/list` | List memory units (paginated, filterable by type) |
+|  | GET | `.../memories/{id}` | Get a single memory unit |
+|  | DELETE | `.../memories/{id}` | Delete a memory unit |
+|  | DELETE | `.../memories/{id}/observations` | Delete observations linked to a memory |
+|  | DELETE | `.../memories` | Clear all memories (optionally filtered by `?type=`) |
 
 ### Banks
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/default/banks` | List all banks |
-| GET | `/v1/default/banks/{bank_id}/profile` | Get bank profile |
-| PATCH | `/v1/default/banks/{bank_id}` | Update bank |
-| DELETE | `/v1/default/banks/{bank_id}` | Delete bank |
-| GET | `/v1/default/banks/{bank_id}/stats` | Bank statistics |
-| GET | `/v1/default/banks/{bank_id}/config` | Get bank config |
-| PATCH | `/v1/default/banks/{bank_id}/config` | Update bank config |
-| PUT | `/v1/default/banks/{bank_id}/profile/disposition` | Update disposition |
-| PUT | `/v1/default/banks/{bank_id}/profile/mission` | Set mission |
-| POST | `/v1/default/banks/{bank_id}/profile/background` | Merge background into mission |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `/v1/default/banks` | List all banks |
+|  | PUT | `.../banks/{bank_id}` | Update bank |
+|  | PATCH | `.../banks/{bank_id}` | Partial update bank |
+|  | DELETE | `.../banks/{bank_id}` | Delete bank |
+|  | GET | `.../banks/{bank_id}/profile` | Get bank profile |
+|  | PUT | `.../banks/{bank_id}/profile` | Update full profile (disposition + mission) |
+|  | PUT | `.../banks/{bank_id}/profile/disposition` | Update disposition traits |
+|  | PUT | `.../banks/{bank_id}/profile/mission` | Set mission |
+|  | POST | `.../banks/{bank_id}/background` | Merge background into mission |
+|  | GET | `.../banks/{bank_id}/stats` | Bank statistics |
+|  | GET | `.../banks/{bank_id}/config` | Get bank config |
+|  | PATCH | `.../banks/{bank_id}/config` | Update bank config |
+|  | DELETE | `.../banks/{bank_id}/config` | Reset config to defaults |
 
 ### Entities
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/default/banks/{bank_id}/entities` | List entities |
-| GET | `/v1/default/banks/{bank_id}/entities/{id}` | Get entity detail |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `.../entities` | List entities (sorted by mention count) |
+|  | GET | `.../entities/{id}` | Get entity detail with observations |
+|  | POST | `.../entities/{id}/regenerate` | **Regenerate entity** (not yet implemented) |
 
 ### Documents & Chunks
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/default/banks/{bank_id}/documents` | List documents |
-| GET | `/v1/default/banks/{bank_id}/documents/{id}` | Get document |
-| DELETE | `/v1/default/banks/{bank_id}/documents/{id}` | Delete document |
-| GET | `/v1/default/banks/{bank_id}/chunks/{id}` | Get chunk |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `.../documents` | List documents |
+|  | GET | `.../documents/{id}` | Get document |
+|  | DELETE | `.../documents/{id}` | Delete document |
+|  | GET | `/v1/default/chunks/{id}` | Get chunk (top-level, not bank-scoped) |
 
 ### Directives
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/default/banks/{bank_id}/directives` | List directives |
-| POST | `/v1/default/banks/{bank_id}/directives` | Create directive |
-| PATCH | `/v1/default/banks/{bank_id}/directives/{id}` | Update directive |
-| DELETE | `/v1/default/banks/{bank_id}/directives/{id}` | Delete directive |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `.../directives` | List directives |
+|  | POST | `.../directives` | Create directive |
+|  | GET | `.../directives/{id}` | Get directive |
+|  | PATCH | `.../directives/{id}` | Update directive |
+|  | DELETE | `.../directives/{id}` | Delete directive |
 
 ### Mental Models
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/default/banks/{bank_id}/mental-models` | List mental models |
-| POST | `/v1/default/banks/{bank_id}/mental-models` | Create mental model |
-| PATCH | `/v1/default/banks/{bank_id}/mental-models/{id}` | Update mental model |
-| DELETE | `/v1/default/banks/{bank_id}/mental-models/{id}` | Delete mental model |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `.../mental-models` | List mental models |
+|  | POST | `.../mental-models` | Create mental model |
+|  | GET | `.../mental-models/{id}` | Get mental model |
+|  | PATCH | `.../mental-models/{id}` | Update mental model |
+|  | DELETE | `.../mental-models/{id}` | Delete mental model |
+|  | POST | `.../mental-models/{id}/refresh` | **Refresh mental model** (not yet implemented) |
 
 ### Operations
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/default/banks/{bank_id}/operations` | List async operations |
-| DELETE | `/v1/default/banks/{bank_id}/operations/{id}` | Cancel operation |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `.../operations` | List async operations |
+|  | GET | `.../operations/{id}` | Get operation detail |
+|  | DELETE | `.../operations/{id}` | Cancel pending operation |
 
 ### Other
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/v1/default/banks/{bank_id}/graph` | Entity co-occurrence graph |
-| GET | `/v1/default/banks/{bank_id}/tags` | List all tags |
-| POST | `/v1/default/banks/{bank_id}/consolidate` | Trigger consolidation (on-demand) |
+| | Method | Path | Description |
+|---|---|---|---|
+|  | GET | `.../graph` | Entity co-occurrence graph |
+|  | GET | `.../tags` | List all tags |
+|  | POST | `.../consolidate` | **Trigger consolidation** (not yet implemented) |
+|  | POST | `.../files/retain` | **File upload** (disabled — future release) |
+
+> **Note:** Paths shown as `...` are relative to `/v1/default/banks/{bank_id}` unless otherwise noted.
+
+### Implementation Summary
+
+| Category | Implemented | Stub/Disabled | Total |
+|---|---|---|---|
+| Health & monitoring | 2 | 1 (metrics) | 3 |
+| Memory operations | 5 | 3 (retain, recall, reflect) | 8 |
+| Banks & profile | 13 | 0 | 13 |
+| Entities | 2 | 1 (regenerate) | 3 |
+| Documents & chunks | 4 | 0 | 4 |
+| Directives | 5 | 0 | 5 |
+| Mental models | 5 | 1 (refresh) | 6 |
+| Operations | 3 | 0 | 3 |
+| Graph, tags, consolidation, files | 2 | 2 (consolidate, files) | 4 |
+| **Total** | **41** | **8** | **49** |
+
+The 8 unimplemented endpoints are the core AI pipelines (retain, recall, reflect, consolidate, entity regeneration, mental model refresh), the metrics endpoint, and file upload. These are tracked in the implementation phases below.
 
 ## Project Structure
 
@@ -214,43 +251,50 @@ hindsight-cf/
 │   ├── index.ts                   # Entry point, Hono app, queue consumer
 │   ├── env.ts                     # Cloudflare bindings type definition
 │   ├── types.ts                   # Shared request/response types
-│   ├── routes/
-│   │   ├── health.ts              # /health, /version, /metrics
-│   │   ├── banks.ts               # Bank CRUD + profile + config
-│   │   ├── memories.ts            # Retain, recall, reflect, list/get/delete
-│   │   ├── entities.ts            # Entity list + detail
-│   │   ├── documents.ts           # Document + chunk CRUD
-│   │   ├── directives.ts          # Directive CRUD
-│   │   ├── mental-models.ts       # Mental model CRUD
-│   │   ├── operations.ts          # Async operation tracking
-│   │   ├── graph.ts               # Entity graph
-│   │   ├── tags.ts                # Tag listing
-│   │   ├── files.ts               # File upload (disabled v1)
-│   │   └── consolidation.ts       # On-demand consolidation
-│   ├── engine/                    # (Phase 2-4) Core pipelines
-│   │   ├── retain/                # Fact extraction, embedding, linking
-│   │   ├── recall/                # Vector + FTS5 + graph search, reranking
-│   │   └── reflect/               # Agentic LLM loop
-│   ├── providers/                 # LLM + embedding provider abstractions
-│   ├── db/                        # D1 query helpers
-│   └── utils/                     # Token counting, text processing
-├── wrangler.toml                  # Cloudflare Worker configuration
+│   └── routes/
+│       ├── health.ts              # /health, /version, /metrics
+│       ├── banks.ts               # Bank CRUD, profile, config
+│       ├── memories.ts            # Retain, recall, reflect, list/get/delete
+│       ├── entities.ts            # Entity list + detail
+│       ├── documents.ts           # Document + chunk CRUD
+│       ├── directives.ts          # Directive CRUD
+│       ├── mental-models.ts       # Mental model CRUD
+│       ├── operations.ts          # Async operation tracking
+│       ├── graph.ts               # Entity co-occurrence graph
+│       ├── tags.ts                # Tag listing
+│       ├── files.ts               # File upload (disabled)
+│       └── consolidation.ts       # On-demand consolidation
+├── tests/
+│   ├── helpers.ts                 # In-memory D1 mock, test utilities
+│   ├── health.test.ts             # Health/version endpoint tests
+│   ├── banks.test.ts              # Bank CRUD tests
+│   ├── directives.test.ts         # Directive CRUD tests
+│   ├── memories.test.ts           # Memory operations tests
+│   └── api-compatibility.test.ts  # Verifies all 47 original hindsight routes exist
+├── wrangler.toml                  # Cloudflare Worker config
+├── vitest.config.ts               # Test configuration
 ├── package.json
 ├── tsconfig.json
-└── PLAN.md                        # Detailed architecture and implementation plan
+└── PLAN.md                        # Architecture and implementation plan
 ```
 
-## Implementation Status
+## Implementation Roadmap
 
 | Phase | Status | Description |
 |---|---|---|
-| Phase 1: Foundation | Done | Scaffolding, D1 schema, router, all endpoint stubs |
-| Phase 2: Retain Pipeline | Planned | Fact extraction, embeddings, entity resolution, storage |
-| Phase 3: Recall Pipeline | Planned | Vector search, FTS5, graph retrieval, reranking, fusion |
-| Phase 4: Reflect Pipeline | Planned | Agentic LLM loop, tool execution, structured output |
+| Phase 1: Foundation | Done | Scaffolding, D1 schema, Hono router, all endpoint stubs |
+| Phase 2: Retain Pipeline | Planned | Fact extraction via LLM, embedding generation, entity resolution, D1/Vectorize storage |
+| Phase 3: Recall Pipeline | Planned | Vector search, FTS5 full-text search, graph retrieval, reranking, result fusion |
+| Phase 4: Reflect Pipeline | Planned | Agentic LLM loop with tool use, structured output |
 | Phase 5: Management APIs | Done | Banks, documents, entities, directives, mental models, tags, graph |
-| Phase 6: Async Operations | Planned | Queue-based async retain, operation tracking |
-| Phase 7: Polish | Planned | Error handling, edge cases, metrics |
+| Phase 6: Async Operations | Planned | Queue-based async retain, operation tracking, consolidation scheduling |
+| Phase 7: Polish | Planned | Error handling, edge cases, metrics, file upload |
+
+## Acknowledgments
+
+This project is a port of [**hindsight**](https://github.com/vectorize-io/hindsight) by [Vectorize](https://vectorize.io). All credit for the memory architecture, API design, and concepts (memory banks, disposition-based recall, directives, mental models, entity graphs, consolidation) belongs to the original hindsight authors. This port aims to make hindsight's capabilities available on Cloudflare's edge platform while maintaining full API compatibility.
+
+This TypeScript port was developed with assistance from [Claude Code](https://docs.anthropic.com/en/docs/claude-code) by Anthropic.
 
 ## License
 
