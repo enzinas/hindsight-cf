@@ -1,6 +1,6 @@
 # hindsight-cf
 
-A TypeScript port of [**hindsight**](https://github.com/vectorize-io/hindsight) to Cloudflare Workers, built with assistance from [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
+A TypeScript port of [**hindsight**](https://github.com/vectorize-io/hindsight) to Cloudflare Workers, built with [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
 [Hindsight](https://github.com/vectorize-io/hindsight) is an open-source AI agent memory system created by [Vectorize](https://vectorize.io). It gives LLM agents persistent, structured memory — enabling them to retain facts, recall relevant context, and reflect over accumulated knowledge. This port brings hindsight's full API to Cloudflare's edge infrastructure, replacing the original Python/FastAPI/PostgreSQL stack with TypeScript, Hono, D1, Vectorize, and Workers AI.
 
@@ -294,8 +294,8 @@ hindsight-cf/
 
 This project is a port of [**hindsight**](https://github.com/vectorize-io/hindsight) by [Vectorize](https://vectorize.io). All credit for the memory architecture, API design, and concepts (memory banks, disposition-based recall, directives, mental models, entity graphs, consolidation) belongs to the original hindsight authors. This port aims to make hindsight's capabilities available on Cloudflare's edge platform while maintaining full API compatibility.
 
-This TypeScript port was developed with assistance from [Claude Code](https://docs.anthropic.com/en/docs/claude-code) by Anthropic.
+This TypeScript port was developed with [Claude Code](https://docs.anthropic.com/en/docs/claude-code) by Anthropic.
 
 ## License
 
-See the original [hindsight](https://github.com/vectorize-io/hindsight) repository for license information.
+Like [hindsight](https://github.com/vectorize-io/hindsight) this is MIT licensed
