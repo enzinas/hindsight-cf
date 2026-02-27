@@ -356,15 +356,13 @@ No API changes needed. The only difference is which external LLM is called (conf
 | 5 | Graph traversal | Simplified (vector + FTS + entity lookup + RRF) | Response format identical; retrieval quality may differ |
 | 6 | Vectorize index | Shared index with `bank_id` metadata filtering | None |
 | 7 | Reflect pipeline | Direct port — agentic loop + external LLM calls via `fetch()` | None (100% identical API response) |
+| 8 | D1 size limits | Accept 10GB limit for v1; sharding deferred | None |
+| 9 | Embeddings | Workers AI `@cf/baai/bge-base-en-v1.5` only (768 dims). No external provider option | None |
+| 10 | LLM provider | Workers AI as default; dashboard dropdown for model selection; optional external LLM API key support | None |
+| 11 | Consolidation | On-demand only (`POST /consolidate`). Auto cron/queue scheduling deferred to v2/v3 | None |
 
 ---
 
-## 9. Remaining Open Questions
+## 9. Open Questions — ALL RESOLVED
 
-1. **D1 size limits?** D1 has a 10GB limit per database. For very large memory banks, we may need to shard across multiple D1 databases. Acceptable for v1?
-
-2. **Workers AI vs external embeddings default?** Workers AI `@cf/baai/bge-small-en-v1.5` is free and fast. We'll also support external (OpenAI, Cohere) for migration scenarios. Workers AI as default?
-
-3. **Reflect LLM provider default?** The reflect agent needs a capable LLM (tool-calling support). Default to OpenAI `gpt-4o-mini`? Or allow Workers AI models? Workers AI models may not support tool calling reliably enough for the agentic loop.
-
-4. **Consolidation scheduling?** The original runs consolidation as an async operation (merges raw facts into observations). On Cloudflare this would be a Queue job or Cron Trigger. How aggressively should we consolidate in v1?
+All open questions have been resolved. See decisions 8-11 in the Decisions Log above.
