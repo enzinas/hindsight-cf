@@ -19,9 +19,9 @@ Port [hindsight](https://github.com/vectorize-io/hindsight) (an AI agent memory 
 | tiktoken (token counting) | **js-tiktoken** (npm) | Pure JS port, works in Workers |
 | LLM calls (OpenAI/Anthropic/etc.) | **Workers AI** or external API calls | `fetch()` to external LLM APIs |
 | Embeddings (local/OpenAI/etc.) | **Workers AI** or external API calls | Workers AI has embedding models |
-| Cross-encoder reranking | **External API call** | No local model support in Workers |
+| Cross-encoder reranking | **Workers AI** `@cf/baai/bge-reranker-base` | Native reranker, same BAAI family |
 | Prometheus metrics | **Workers Analytics Engine** | Or omit for v1 |
-| MCP server (SSE) | **Deferred** | SSE not natively supported in Workers |
+| MCP server (SSE) | **Deferred to v2** | Not in scope for v1 |
 
 ---
 
@@ -125,15 +125,15 @@ All routes are under `/v1/default/banks/{bank_id}/...`:
 3. **D1** stores operation status (same API contract as async_operations table).
 4. Alternatively, **Durable Objects** can manage long-running operation state and coordinate retries.
 
-### 3d. Cross-Encoder Reranking
+### 3d. Cross-Encoder Reranking — RESOLVED
 **Original:** Local SentenceTransformers model or remote TEI/Cohere/LiteLLM API.
 
-**Cloudflare:** Cannot run PyTorch models in Workers. Workers AI doesn't have cross-encoder models.
+**Cloudflare:** Workers AI provides `@cf/baai/bge-reranker-base` — same BAAI model family as the original default.
 
-**Proposed approach:**
-1. **Default:** Use Cohere Rerank API or equivalent external API (already supported in original).
-2. **Fallback:** Skip reranking (use reciprocal rank fusion only). This degrades quality but maintains API compat.
-3. Could also explore Workers AI for a lightweight reranking proxy in the future.
+**Decision:**
+1. **Default:** Workers AI `@cf/baai/bge-reranker-base` (native, free, low latency).
+2. **Optional:** External API (Cohere, etc.) for users who want a different model.
+3. No PyTorch or containers needed.
 
 ### 3e. Embeddings
 **Original:** Local SentenceTransformers, OpenAI, Cohere, TEI, LiteLLM.
@@ -154,15 +154,10 @@ All routes are under `/v1/default/banks/{bank_id}/...`:
 2. Optionally support **Workers AI** as a built-in LLM provider.
 3. Port the prompt templates and structured output parsing to TypeScript.
 
-### 3g. File Parsing (markitdown, Iris)
-**Original:** Python `markitdown` and `iris` libraries for parsing PDFs, Office docs, etc.
+### 3g. File Parsing (markitdown, Iris) — RESOLVED
+**Original:** Python `markitdown` and `iris` libraries for parsing PDFs, Office docs, etc. Optional feature behind `HINDSIGHT_API_ENABLE_FILE_UPLOAD_API` flag.
 
-**Cloudflare:** No native document parsing in Workers.
-
-**Proposed approach:**
-1. For text files and markdown: handle directly in Worker.
-2. For complex formats (PDF, DOCX): call an external parsing service or use R2 + a scheduled Worker.
-3. **Alternative:** Accept only pre-parsed text content in v1, add file parsing later.
+**Decision:** Pre-parsed text only in v1. The file upload endpoint returns 404 with the feature flag disabled — this is exactly what the original does when the flag is off. **100% API compatible.**
 
 ### 3h. Entity Resolution
 **Original:** LLM-based entity resolution with coreference resolution.
@@ -171,24 +166,15 @@ All routes are under `/v1/default/banks/{bank_id}/...`:
 
 **Proposed approach:** Port entity resolution prompts and logic to TypeScript. Same LLM calls, same logic.
 
-### 3i. MCP Server (Model Context Protocol)
-**Original:** SSE-based MCP server for tool integration.
+### 3i. MCP Server (Model Context Protocol) — RESOLVED
+**Original:** SSE-based MCP server for tool integration. Optional feature behind `mcp_enabled` flag.
 
-**Cloudflare:** Workers support SSE with `ReadableStream` but with caveats (no long-lived connections beyond ~30s for non-WebSocket).
+**Decision:** Deferred to v2. Version endpoint reports `mcp: false`. **100% API compatible** (feature flag off).
 
-**Proposed approach:**
-1. **Defer MCP** to a later phase.
-2. Or implement using **Durable Objects** + WebSocket for persistent connections.
+### 3j. Multi-Tenancy / Schema Isolation — RESOLVED
+**Original:** PostgreSQL schemas for tenant isolation via optional `TenantExtension`. Default deployment is single-tenant using `public` schema.
 
-### 3j. Multi-Tenancy / Schema Isolation
-**Original:** PostgreSQL schemas for tenant isolation (each tenant gets a separate PG schema).
-
-**Cloudflare:** D1 doesn't have schema namespacing.
-
-**Proposed approach:**
-1. **Single-tenant per D1 database** (simplest, strongest isolation).
-2. Or use a `tenant_id` column on all tables + row-level filtering.
-3. For v1: single-tenant mode (matches the default docker deployment).
+**Decision:** Single-tenant (one D1 database). Matches the original's default mode. **100% API compatible.**
 
 ### 3k. Database Transactions
 **Original:** PostgreSQL transactions with connection pooling via asyncpg.
@@ -237,11 +223,13 @@ All routes are under `/v1/default/banks/{bank_id}/...`:
 5. Reranking (external API)
 6. Entity state hydration
 
-### Phase 4: Reflect Pipeline
-1. Port reflect agent logic (tool-calling loop)
-2. Reflect tools: recall, lookup, learn, expand
-3. Structured output support
-4. Observation/consolidation system
+### Phase 4: Reflect Pipeline (see Section 7 for detailed design)
+1. Port reflect agent loop (iterative LLM tool-calling)
+2. Port all 5 reflect tools: search_mental_models, search_observations, recall, expand, done
+3. Port system prompts and hierarchical retrieval strategy
+4. Structured output support (response_schema → extra LLM call)
+5. Directive compliance system
+6. Observation/consolidation system
 
 ### Phase 5: Management APIs
 1. Banks CRUD
@@ -266,16 +254,117 @@ All routes are under `/v1/default/banks/{bank_id}/...`:
 
 ---
 
-## 6. Open Questions for Discussion
+## 7. Reflect Pipeline — Detailed Cloudflare Design
 
-1. **Vectorize index per bank vs shared index?** Vectorize supports namespace filtering, so a shared index with `bank_id` metadata is likely simpler.
+### What Reflect Does (Original)
 
-2. **D1 size limits?** D1 has a 10GB limit per database. For very large memory banks, we may need to shard across multiple D1 databases.
+Reflect is an **agentic LLM loop** that answers questions by reasoning over retrieved memories. It's not a simple RAG query — it's a multi-turn tool-calling agent with up to 10 iterations.
 
-3. **Workers AI vs external embeddings?** Workers AI is free and fast but limited to specific models. If users need to match existing embeddings (e.g., they migrated from the Python version), we need external API support.
+**The loop:**
+1. Build a system prompt with bank profile, mission, disposition, directives, and retrieval strategy instructions.
+2. Send the user's query to an LLM with 5 tools available.
+3. The LLM calls tools to gather evidence, then calls `done()` with its answer.
+4. If it hits the iteration limit, a "final prompt" forces a response from whatever was gathered.
 
-4. **Reranking quality?** Skipping cross-encoder reranking will degrade recall quality. Should we require a Cohere API key for reranking, or make it optional?
+### The 5 Reflect Tools
 
-5. **MCP support timeline?** Should we attempt Durable Object-based MCP in v1, or defer entirely?
+| Tool | Purpose | Cloudflare Implementation |
+|---|---|---|
+| `search_mental_models(query, max_results)` | Search user-curated summaries (highest priority) | D1 query + Vectorize similarity search on mental_models table |
+| `search_observations(query, max_tokens)` | Search auto-consolidated knowledge | D1 query + Vectorize similarity search on observations |
+| `recall(query, max_tokens, max_chunk_tokens)` | Search raw facts (ground truth) | Same recall pipeline from Phase 3 (Vectorize + FTS5 + rerank) |
+| `expand(memory_ids, depth)` | Get surrounding context for memories | D1 lookup: chunk text or full document from chunks/documents tables |
+| `done(answer, memory_ids, mental_model_ids, observation_ids)` | Submit final answer with citations | Validates cited IDs against actually-retrieved IDs, cleans answer text |
 
-6. **Graph search fidelity?** The original uses spreading activation across the memory graph. Porting this to D1 with recursive queries may be limited (SQLite has recursive CTEs but no built-in graph extensions). We may need to simplify the graph traversal.
+### Hierarchical Retrieval Strategy
+
+The agent is forced through a specific retrieval order via `tool_choice`:
+- **Iteration 0:** Forced to call `search_mental_models` (if bank has mental models) or `search_observations`
+- **Iteration 1:** Forced to call `search_observations` (if mental models) or `recall`
+- **Iteration 2:** Forced to call `recall` (if mental models)
+- **Iteration 3+:** `auto` — LLM decides what to call or calls `done()`
+
+This ensures the agent always gathers evidence before answering.
+
+### Why Reflect Works Fine on Cloudflare Workers
+
+Reflect is **entirely LLM API calls + database queries**. There is no:
+- Local model inference (all LLM calls go to external APIs via `fetch()`)
+- Heavy CPU computation
+- Long-running background processing (it's a synchronous request-response)
+
+The main concern is **wall-clock time**: a reflect with 5-10 LLM round-trips could take 10-30 seconds. Cloudflare Workers support this:
+- **Workers have no wall-clock timeout** for fetch subrequests (only CPU time is limited to 30s on bundled, 30ms on unbound between I/O).
+- Each LLM call is an I/O wait (fetch), not CPU time.
+- The agent loop itself is lightweight orchestration code.
+
+### Implementation Plan
+
+```
+src/engine/reflect/
+├── agent.ts           # Main agentic loop (port of agent.py)
+├── prompts.ts         # System prompts & prompt builders (port of prompts.py)
+├── tools-schema.ts    # OpenAI-format tool definitions (port of tools_schema.py)
+├── tools.ts           # Tool execution dispatch (port of tools.py)
+└── types.ts           # ReflectAgentResult, ToolCall, LLMCall types
+```
+
+**Key porting decisions:**
+1. **LLM calls:** Use a thin `LLMProvider` abstraction that calls external APIs via `fetch()`. The provider must support `call()` (text completion) and `call_with_tools()` (tool-calling). OpenAI-compatible format (same as original).
+2. **Tool execution:** Tools call back into the recall pipeline (Phase 3) and D1 queries. No new infrastructure needed — reflect reuses existing recall/search code.
+3. **Structured output:** When `response_schema` is provided, an extra LLM call extracts structured JSON from the free-text answer. Pure LLM call, fully portable.
+4. **Directive compliance:** Directives are injected into the system prompt at the START and END (for recency effect). The `done()` tool schema gets an extra `directive_compliance` field when directives are present. Pure prompt engineering, fully portable.
+5. **Answer cleaning:** Regex-based cleanup of LLM output artifacts (leaked JSON, tool call syntax). Port the regex patterns to TypeScript.
+6. **ID validation:** The agent tracks which IDs were actually returned by tools, and filters out any hallucinated IDs from the `done()` call. Simple set tracking, fully portable.
+7. **Parallel tool execution:** When the LLM returns multiple tool calls, execute them concurrently with `Promise.all()` (equivalent to Python's `asyncio.gather()`).
+
+### API Compatibility
+
+The reflect API response is **100% identical**:
+```json
+{
+  "text": "markdown answer",
+  "structured_output": { ... },  // if response_schema provided
+  "based_on": {
+    "memory_ids": ["..."],
+    "mental_model_ids": ["..."],
+    "observation_ids": ["..."]
+  },
+  "trace": {
+    "iterations": 4,
+    "tools_called": 3,
+    "tool_trace": [...],
+    "llm_trace": [...],
+    "usage": { "input_tokens": 5000, "output_tokens": 800, "total_tokens": 5800 },
+    "directives_applied": [...]
+  }
+}
+```
+
+No API changes needed. The only difference is which external LLM is called (configurable).
+
+---
+
+## 8. Decisions Log
+
+| # | Decision | Choice | API Impact |
+|---|---|---|---|
+| 1 | Reranking | Workers AI `@cf/baai/bge-reranker-base` (native) | None |
+| 2 | File parsing | Pre-parsed text only; file upload disabled (feature flag) | None (same as original with flag off) |
+| 3 | MCP server | Deferred to v2 | Feature flag reports `mcp: false` |
+| 4 | Multi-tenancy | Single-tenant (matches original default) | None |
+| 5 | Graph traversal | Simplified (vector + FTS + entity lookup + RRF) | Response format identical; retrieval quality may differ |
+| 6 | Vectorize index | Shared index with `bank_id` metadata filtering | None |
+| 7 | Reflect pipeline | Direct port — agentic loop + external LLM calls via `fetch()` | None (100% identical API response) |
+
+---
+
+## 9. Remaining Open Questions
+
+1. **D1 size limits?** D1 has a 10GB limit per database. For very large memory banks, we may need to shard across multiple D1 databases. Acceptable for v1?
+
+2. **Workers AI vs external embeddings default?** Workers AI `@cf/baai/bge-small-en-v1.5` is free and fast. We'll also support external (OpenAI, Cohere) for migration scenarios. Workers AI as default?
+
+3. **Reflect LLM provider default?** The reflect agent needs a capable LLM (tool-calling support). Default to OpenAI `gpt-4o-mini`? Or allow Workers AI models? Workers AI models may not support tool calling reliably enough for the agentic loop.
+
+4. **Consolidation scheduling?** The original runs consolidation as an async operation (merges raw facts into observations). On Cloudflare this would be a Queue job or Cron Trigger. How aggressively should we consolidate in v1?
