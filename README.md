@@ -21,88 +21,208 @@ For full details on hindsight's memory model, architecture, and concepts (memory
 | Object storage | Local / S3 | **R2** |
 | Background jobs | Celery / threads | **Queues** |
 
-## Prerequisites
+## Getting Started
 
-- [Node.js](https://nodejs.org/) >= 18 (dev/build only — not used in production)
-- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/) >= 3.95
-- A Cloudflare account with access to D1, Vectorize, R2, Workers AI, and Queues
+Follow these steps from scratch. Every command is copy-pasteable.
 
-## Setup
+### Step 1 — Install prerequisites
 
-### 1. Install dependencies
+You need **Node.js** (>= 18) and **npm**. Node.js is only required for local development and the build toolchain — it does not run in production.
+
+Check if you already have them:
+
+```sh
+node --version   # should print v18.x or higher
+npm --version    # should print 9.x or higher
+```
+
+If not installed, download from [nodejs.org](https://nodejs.org/) (the LTS version is fine) or use a version manager like [nvm](https://github.com/nvm-sh/nvm):
+
+```sh
+# Option: install via nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+nvm install 20
+```
+
+### Step 2 — Create a Cloudflare account
+
+If you don't already have one, sign up for a free account at [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up).
+
+The free tier includes Workers, D1, R2, Queues, Workers AI, and Vectorize — everything this project uses.
+
+### Step 3 — Clone the repository
+
+```sh
+git clone https://github.com/enzinas/hindsight-cf.git
+cd hindsight-cf
+```
+
+### Step 4 — Install dependencies
 
 ```sh
 npm install
 ```
 
-### 2. Create Cloudflare resources
+This installs the Hono framework, Wrangler CLI, TypeScript compiler, and all other dependencies.
+
+### Step 5 — Log in to Cloudflare
 
 ```sh
-# D1 database
-wrangler d1 create hindsight-db
-
-# Vectorize index (768 dimensions for bge-base-en-v1.5, cosine metric)
-wrangler vectorize create hindsight-vectors --dimensions=768 --metric=cosine
-
-# R2 bucket
-wrangler r2 bucket create hindsight-files
-
-# Queue
-wrangler queues create hindsight-jobs
-wrangler queues create hindsight-jobs-dlq
+npx wrangler login
 ```
 
-### 3. Update wrangler.toml
+This opens your browser. Authorize Wrangler to access your Cloudflare account. Once complete, the terminal will confirm you're logged in.
 
-Replace the `database_id` placeholder with the ID returned by `wrangler d1 create`:
+### Step 6 — Create Cloudflare resources
 
-```toml
+Run each command below. Each one creates a resource in your Cloudflare account and prints an ID. **Save the D1 database ID** — you'll need it in the next step.
+
+```sh
+# Create the D1 database (save the ID from the output!)
+npx wrangler d1 create hindsight-db
+```
+
+You'll see output like:
+
+```
+✅ Successfully created DB 'hindsight-db'
+
 [[d1_databases]]
 binding = "DB"
 database_name = "hindsight-db"
-database_id = "<your-database-id>"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   <-- copy this
 ```
 
-### 4. Run database migrations
+Now create the remaining resources:
 
 ```sh
-# Local development
+# Create the Vectorize index (768 dimensions for bge-base-en-v1.5, cosine similarity)
+npx wrangler vectorize create hindsight-vectors --dimensions=768 --metric=cosine
+
+# Create the R2 storage bucket
+npx wrangler r2 bucket create hindsight-files
+
+# Create the job queue and its dead-letter queue
+npx wrangler queues create hindsight-jobs
+npx wrangler queues create hindsight-jobs-dlq
+```
+
+### Step 7 — Update wrangler.toml with your database ID
+
+Open `wrangler.toml` and replace the placeholder `database_id` with the actual ID from Step 6:
+
+```sh
+# On macOS/Linux — replace the placeholder in one command:
+sed -i.bak 's/TODO-replace-with-actual-id/YOUR_ACTUAL_DATABASE_ID/' wrangler.toml
+```
+
+Or open `wrangler.toml` in your editor and change this line:
+
+```toml
+database_id = "TODO-replace-with-actual-id"
+```
+
+to:
+
+```toml
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   # your actual ID
+```
+
+### Step 8 — Run database migrations
+
+Apply the schema to your D1 database. This creates the 10 tables, FTS5 virtual table, and triggers.
+
+```sh
+# For local development
 npm run db:migrate
 
-# Remote (production)
+# For production (remote D1)
 npm run db:migrate:remote
 ```
 
-## Development
+### Step 9 — Verify locally
+
+Start the local dev server:
 
 ```sh
-# Start local dev server (with local D1, simulated bindings)
 npm run dev
 ```
 
-The server starts at `http://localhost:8787`. All API endpoints are available under `/v1/default/banks/{bank_id}/...`.
+The server starts at `http://localhost:8787`. Test it:
+
+```sh
+# Health check
+curl http://localhost:8787/health
+# → {"status":"ok"}
+
+# Version info
+curl http://localhost:8787/version
+# → {"version":"0.1.0","runtime":"cloudflare-workers",...}
+
+# Create a bank and get its profile (banks auto-create on first access)
+curl http://localhost:8787/v1/default/banks/my-agent/profile
+# → {"bank_id":"my-agent","name":"my-agent","disposition":{...},...}
+```
+
+Run the test suite:
+
+```sh
+npm run test
+```
+
+All 84 tests should pass, including the API compatibility suite that verifies all 47 original hindsight routes.
+
+### Step 10 — Deploy to production
+
+```sh
+npm run deploy
+```
+
+Wrangler builds the TypeScript, uploads the Worker, and connects it to your D1, Vectorize, R2, and Queue resources. On success it prints your Worker's URL:
+
+```
+Published hindsight-cf (x.xx sec)
+  https://hindsight-cf.<your-subdomain>.workers.dev
+```
+
+Apply the database schema to your production D1:
+
+```sh
+npm run db:migrate:remote
+```
+
+Verify the deployment:
+
+```sh
+curl https://hindsight-cf.<your-subdomain>.workers.dev/health
+# → {"status":"ok"}
+```
+
+Your hindsight-cf instance is now live on Cloudflare's edge network.
+
+## Development
 
 ### Useful commands
 
 ```sh
-npm run dev              # Start local dev server
-npm run typecheck        # Run TypeScript type checking
-npm run test             # Run tests (84 tests including API compatibility)
+npm run dev              # Start local dev server (http://localhost:8787)
+npm run test             # Run all 84 tests
 npm run test:watch       # Run tests in watch mode
+npm run typecheck        # TypeScript type checking
+npm run db:migrate       # Apply migrations to local D1
+npm run db:migrate:remote # Apply migrations to production D1
+npm run deploy           # Deploy to Cloudflare Workers
 ```
 
-## Deployment
+### Custom domain (optional)
 
-```sh
-# Deploy to Cloudflare Workers
-npm run deploy
-```
-
-This deploys the Worker and applies the queue consumer configuration. Make sure all Cloudflare resources (D1, Vectorize, R2, Queues) are created first and `wrangler.toml` is updated with the correct IDs.
+To use your own domain instead of `*.workers.dev`, add a custom domain in the [Cloudflare dashboard](https://dash.cloudflare.com/) under Workers & Pages > your worker > Settings > Domains & Routes.
 
 ## Configuration
 
 ### Environment variables (wrangler.toml `[vars]`)
+
+These are set in `wrangler.toml` and can be changed before deploying:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -114,13 +234,17 @@ This deploys the Worker and applies the queue consumer configuration. Make sure 
 
 ### Secrets (optional, for external LLM providers)
 
+If you want to use an external LLM (OpenAI, Anthropic, etc.) instead of or in addition to Workers AI:
+
 ```sh
-# If using an external LLM instead of Workers AI
-wrangler secret put OPENAI_API_KEY
-wrangler secret put ANTHROPIC_API_KEY
-wrangler secret put EXTERNAL_LLM_BASE_URL
-wrangler secret put EXTERNAL_LLM_MODEL
+# Set secrets (Wrangler will prompt you to enter the value securely)
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put EXTERNAL_LLM_BASE_URL
+npx wrangler secret put EXTERNAL_LLM_MODEL
 ```
+
+Secrets are encrypted and only available to your Worker at runtime. They are never stored in your code or `wrangler.toml`.
 
 ## API Reference
 
