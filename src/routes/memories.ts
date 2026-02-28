@@ -18,6 +18,7 @@ import type { RetainContent } from '../engine/retain/types';
 import { recall } from '../engine/recall/orchestrator';
 import { BUDGET_LIMITS } from '../engine/recall/types';
 import type { FactType } from '../types';
+import { deleteVectorsBatched } from '../vectorize-utils';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -125,13 +126,10 @@ app.delete('/', async (c) => {
   const rows = await c.env.DB.prepare(selectQuery).bind(...params).all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
+  // Delete vectors first (best-effort) so a partial failure doesn't leave ghost vectors
+  await deleteVectorsBatched(c.env.VECTORIZE, ids);
+
   const result = await c.env.DB.prepare(deleteQuery).bind(...params).run();
-
-  // Delete vectors from Vectorize
-  if (ids.length > 0) {
-    await c.env.VECTORIZE.deleteByIds(ids);
-  }
-
   return c.json({ success: true, deleted_count: result.meta.changes });
 });
 
@@ -236,16 +234,21 @@ app.delete('/:memory_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const memoryId = c.req.param('memory_id');
 
-  const result = await c.env.DB.prepare(
-    'DELETE FROM memory_units WHERE id = ? AND bank_id = ?'
-  ).bind(memoryId, bankId).run();
+  // Check existence first so we can 404 without side effects
+  const exists = await c.env.DB.prepare(
+    'SELECT id FROM memory_units WHERE id = ? AND bank_id = ?'
+  ).bind(memoryId, bankId).first();
 
-  if (result.meta.changes === 0) {
+  if (!exists) {
     return c.json({ error: 'not_found', message: 'Memory unit not found' }, 404);
   }
 
-  // Delete vector from Vectorize
-  await c.env.VECTORIZE.deleteByIds([memoryId]);
+  // Delete vector first (best-effort), then D1 row
+  await deleteVectorsBatched(c.env.VECTORIZE, [memoryId]);
+
+  await c.env.DB.prepare(
+    'DELETE FROM memory_units WHERE id = ? AND bank_id = ?'
+  ).bind(memoryId, bankId).run();
 
   return c.json({ success: true, deleted: memoryId });
 });
@@ -255,20 +258,17 @@ app.delete('/:memory_id/observations', async (c) => {
   const bankId = c.req.param('bank_id');
   const memoryId = c.req.param('memory_id');
 
-  // Collect IDs before deleting so we can remove vectors
   const rows = await c.env.DB.prepare(
     "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)"
   ).bind(bankId, `%${memoryId}%`).all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
+  // Delete vectors first (best-effort), then D1 rows
+  await deleteVectorsBatched(c.env.VECTORIZE, ids);
+
   const result = await c.env.DB.prepare(
     "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)"
   ).bind(bankId, `%${memoryId}%`).run();
-
-  // Delete vectors from Vectorize
-  if (ids.length > 0) {
-    await c.env.VECTORIZE.deleteByIds(ids);
-  }
 
   return c.json({ success: true, deleted_count: result.meta.changes });
 });

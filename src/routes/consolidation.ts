@@ -3,6 +3,7 @@
  */
 import { Hono } from 'hono';
 import type { Env } from '../env';
+import { deleteVectorsBatched } from '../vectorize-utils';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -16,20 +17,17 @@ app.post('/', async (c) => {
 app.delete('/observations', async (c) => {
   const bankId = c.req.param('bank_id');
 
-  // Collect IDs before deleting so we can remove vectors
   const rows = await c.env.DB.prepare(
     "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
   ).bind(bankId).all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
+  // Delete vectors first (best-effort), then D1 rows
+  await deleteVectorsBatched(c.env.VECTORIZE, ids);
+
   const result = await c.env.DB.prepare(
     "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
   ).bind(bankId).run();
-
-  // Delete vectors from Vectorize
-  if (ids.length > 0) {
-    await c.env.VECTORIZE.deleteByIds(ids);
-  }
 
   return c.json({ success: true, deleted_count: result.meta.changes });
 });

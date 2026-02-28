@@ -3,6 +3,7 @@
  */
 import { Hono } from 'hono';
 import type { Env } from '../env';
+import { deleteVectorsBatched } from '../vectorize-utils';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -116,8 +117,8 @@ app.delete('/:model_id', async (c) => {
     return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);
   }
 
-  // Delete vector from Vectorize
-  await c.env.VECTORIZE.deleteByIds([modelId]);
+  // Delete vector from Vectorize (best-effort)
+  await deleteVectorsBatched(c.env.VECTORIZE, [modelId]);
 
   return c.json({ success: true, deleted: modelId });
 });

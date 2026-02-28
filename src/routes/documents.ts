@@ -3,6 +3,7 @@
  */
 import { Hono } from 'hono';
 import type { Env } from '../env';
+import { deleteVectorsBatched } from '../vectorize-utils';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -58,29 +59,40 @@ app.get('/:document_id', async (c) => {
   });
 });
 
-// DELETE /documents/:document_id — delete document (cascades to chunks and memory units)
+// DELETE /documents/:document_id — delete document, its chunks, and associated memory units
 app.delete('/:document_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const documentId = c.req.param('document_id');
 
-  // Collect memory unit IDs before cascade delete removes them
+  // Check existence
+  const doc = await c.env.DB.prepare(
+    'SELECT id FROM documents WHERE id = ? AND bank_id = ?'
+  ).bind(documentId, bankId).first();
+
+  if (!doc) {
+    return c.json({ error: 'not_found', message: 'Document not found' }, 404);
+  }
+
+  // Collect memory unit IDs (no FK cascade from documents → memory_units)
   const rows = await c.env.DB.prepare(
     'SELECT id FROM memory_units WHERE document_id = ? AND bank_id = ?'
   ).bind(documentId, bankId).all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
-  const result = await c.env.DB.prepare(
+  // Delete vectors first (best-effort), then D1 rows
+  await deleteVectorsBatched(c.env.VECTORIZE, ids);
+
+  // Explicitly delete memory_units (schema has no cascade from documents to memory_units)
+  if (ids.length > 0) {
+    await c.env.DB.prepare(
+      'DELETE FROM memory_units WHERE document_id = ? AND bank_id = ?'
+    ).bind(documentId, bankId).run();
+  }
+
+  // Delete document (cascades to chunks via FK)
+  await c.env.DB.prepare(
     'DELETE FROM documents WHERE id = ? AND bank_id = ?'
   ).bind(documentId, bankId).run();
-
-  if (result.meta.changes === 0) {
-    return c.json({ error: 'not_found', message: 'Document not found' }, 404);
-  }
-
-  // Delete vectors from Vectorize
-  if (ids.length > 0) {
-    await c.env.VECTORIZE.deleteByIds(ids);
-  }
 
   return c.json({ success: true, deleted: documentId });
 });

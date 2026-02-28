@@ -18,6 +18,7 @@ import { directivesRoutes } from './routes/directives';
 import { mentalModelsRoutes } from './routes/mental-models';
 import { operationsRoutes } from './routes/operations';
 import { graphRoutes } from './routes/graph';
+import { deleteVectorsBatched } from './vectorize-utils';
 import { tagsRoutes } from './routes/tags';
 import { filesRoutes } from './routes/files';
 
@@ -100,14 +101,12 @@ bank.delete('/', async (c) => {
   ).bind(bankId).all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
+  // Delete vectors first (best-effort), then D1 (cascade handles child tables)
+  await deleteVectorsBatched(c.env.VECTORIZE, ids);
+
   const result = await c.env.DB.prepare('DELETE FROM banks WHERE bank_id = ?').bind(bankId).run();
   if (result.meta.changes === 0) {
     return c.json({ error: 'not_found', message: 'Bank not found' }, 404);
-  }
-
-  // Delete vectors from Vectorize
-  if (ids.length > 0) {
-    await c.env.VECTORIZE.deleteByIds(ids);
   }
 
   return c.json({ success: true, deleted: bankId });
@@ -270,20 +269,17 @@ bank.post('/consolidate', async (c) => {
 bank.delete('/observations', async (c) => {
   const bankId = c.req.param('bank_id');
 
-  // Collect IDs before deleting so we can remove vectors
   const rows = await c.env.DB.prepare(
     "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
   ).bind(bankId).all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
+  // Delete vectors first (best-effort), then D1 rows
+  await deleteVectorsBatched(c.env.VECTORIZE, ids);
+
   const result = await c.env.DB.prepare(
     "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
   ).bind(bankId).run();
-
-  // Delete vectors from Vectorize
-  if (ids.length > 0) {
-    await c.env.VECTORIZE.deleteByIds(ids);
-  }
 
   return c.json({ success: true, deleted_count: result.meta.changes });
 });
