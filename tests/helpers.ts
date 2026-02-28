@@ -102,11 +102,12 @@ class MockD1PreparedStatement {
         const limitMatch = sqlLower.match(/limit\s+(\?|\d+)/);
 
         // Count how many ? come before LIMIT and OFFSET to find param indices
-        const whereEnd = sqlLower.indexOf('order by') !== -1
-          ? sqlLower.indexOf('order by')
-          : sqlLower.indexOf('limit') !== -1
-            ? sqlLower.indexOf('limit')
-            : sqlLower.length;
+        const whereEnd =
+          sqlLower.indexOf('order by') !== -1
+            ? sqlLower.indexOf('order by')
+            : sqlLower.indexOf('limit') !== -1
+              ? sqlLower.indexOf('limit')
+              : sqlLower.length;
         const wherePart = sqlLower.substring(0, whereEnd);
         const whereParamCount = (wherePart.match(/\?/g) || []).length;
 
@@ -173,16 +174,22 @@ class MockD1PreparedStatement {
             if (table === 'documents') return existing.id === row.id && existing.bank_id === row.bank_id;
             if (table === 'chunks') return existing.chunk_id === row.chunk_id;
             if (table === 'entities') {
-              return existing.bank_id === row.bank_id &&
-                String(existing.canonical_name).toLowerCase() === String(row.canonical_name).toLowerCase();
+              return (
+                existing.bank_id === row.bank_id &&
+                String(existing.canonical_name).toLowerCase() === String(row.canonical_name).toLowerCase()
+              );
             }
-            if (table === 'unit_entities') return existing.unit_id === row.unit_id && existing.entity_id === row.entity_id;
-            if (table === 'entity_cooccurrences') return existing.entity_id_1 === row.entity_id_1 && existing.entity_id_2 === row.entity_id_2;
+            if (table === 'unit_entities')
+              return existing.unit_id === row.unit_id && existing.entity_id === row.entity_id;
+            if (table === 'entity_cooccurrences')
+              return existing.entity_id_1 === row.entity_id_1 && existing.entity_id_2 === row.entity_id_2;
             if (table === 'memory_links') {
-              return existing.from_unit_id === row.from_unit_id &&
+              return (
+                existing.from_unit_id === row.from_unit_id &&
                 existing.to_unit_id === row.to_unit_id &&
                 existing.link_type === row.link_type &&
-                existing.entity_id === row.entity_id;
+                existing.entity_id === row.entity_id
+              );
             }
             return false;
           });
@@ -193,10 +200,10 @@ class MockD1PreparedStatement {
             if (sqlLower.includes('do update')) {
               // Merge: keep old row but update any non-key columns mentioned in SET
               if (table === 'entities') {
-                existing.mention_count = (existing.mention_count as number || 0) + 1;
+                existing.mention_count = ((existing.mention_count as number) || 0) + 1;
                 existing.last_seen = row.last_seen;
               } else if (table === 'entity_cooccurrences') {
-                existing.cooccurrence_count = (existing.cooccurrence_count as number || 0) + 1;
+                existing.cooccurrence_count = ((existing.cooccurrence_count as number) || 0) + 1;
                 existing.last_cooccurred = row.last_cooccurred;
               } else if (table === 'documents') {
                 existing.original_text = row.original_text;
@@ -256,7 +263,7 @@ class MockD1PreparedStatement {
         const table = this.getFromTable(sqlLower);
         const before = (store.tables[table] || []).length;
         store.tables[table] = (store.tables[table] || []).filter(
-          (row) => !this.rowMatchesWhere(row, sqlLower, this.params)
+          (row) => !this.rowMatchesWhere(row, sqlLower, this.params),
         );
         const after = (store.tables[table] || []).length;
         return { results: [], meta: { changes: before - after } };
@@ -283,7 +290,7 @@ class MockD1PreparedStatement {
       if (matchIdx >= 0) {
         const ftsQuery = this.params[0] as string;
         const bankId = this.params[1] as string;
-        const limit = this.params[2] as number ?? 50;
+        const limit = (this.params[2] as number) ?? 50;
 
         // Parse OR-separated terms
         const terms = (ftsQuery || '').split(/\s+OR\s+/i).map((t: string) => t.trim().toLowerCase());
@@ -519,21 +526,23 @@ class MockWorkersAI {
       const text = textMatch ? textMatch[1].trim() : userMsg;
 
       // Generate a simple fact from the text
-      const facts = [{
-        fact_text: text.length > 200 ? text.substring(0, 200) : text,
-        fact_type: 'world',
-        entities: extractSimpleEntities(text),
-        occurred_start: null,
-        occurred_end: null,
-        where: null,
-      }];
+      const facts = [
+        {
+          fact_text: text.length > 200 ? text.substring(0, 200) : text,
+          fact_type: 'world',
+          entities: extractSimpleEntities(text),
+          occurred_start: null,
+          occurred_end: null,
+          where: null,
+        },
+      ];
 
       return { response: JSON.stringify(facts) };
     }
 
     // Reranker models: return scores for all documents
     if (model.includes('reranker')) {
-      const documents = inputs.documents as string[] ?? [];
+      const documents = (inputs.documents as string[]) ?? [];
       const data = documents.map((_doc: string, i: number) => ({
         index: i,
         score: 1.0 - i * 0.1, // Decreasing scores
@@ -558,7 +567,9 @@ function extractSimpleEntities(text: string): string[] {
 class MockVectorizeIndex {
   private vectors: Array<{ id: string; values: number[]; metadata: Record<string, unknown> }> = [];
 
-  async upsert(vectors: Array<{ id: string; values: number[]; metadata?: Record<string, unknown> }>): Promise<{ count: number }> {
+  async upsert(
+    vectors: Array<{ id: string; values: number[]; metadata?: Record<string, unknown> }>,
+  ): Promise<{ count: number }> {
     for (const vec of vectors) {
       const existingIdx = this.vectors.findIndex((v) => v.id === vec.id);
       const entry = { id: vec.id, values: vec.values, metadata: vec.metadata ?? {} };
@@ -607,7 +618,9 @@ class MockVectorizeIndex {
 
 function cosineSim(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0, normA = 0, normB = 0;
+  let dot = 0,
+    normA = 0,
+    normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     normA += a[i] * a[i];

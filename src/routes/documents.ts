@@ -14,12 +14,14 @@ app.get('/', async (c) => {
   const offset = parseInt(c.req.query('offset') || '0');
 
   const results = await c.env.DB.prepare(
-    'SELECT id, content_hash, metadata, created_at, updated_at FROM documents WHERE bank_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?'
-  ).bind(bankId, limit, offset).all();
+    'SELECT id, content_hash, metadata, created_at, updated_at FROM documents WHERE bank_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+  )
+    .bind(bankId, limit, offset)
+    .all();
 
-  const countResult = await c.env.DB.prepare(
-    'SELECT COUNT(*) as total FROM documents WHERE bank_id = ?'
-  ).bind(bankId).first<{ total: number }>();
+  const countResult = await c.env.DB.prepare('SELECT COUNT(*) as total FROM documents WHERE bank_id = ?')
+    .bind(bankId)
+    .first<{ total: number }>();
 
   return c.json({
     items: results.results.map((row: Record<string, unknown>) => ({
@@ -40,9 +42,9 @@ app.get('/:document_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const documentId = c.req.param('document_id');
 
-  const doc = await c.env.DB.prepare(
-    'SELECT * FROM documents WHERE id = ? AND bank_id = ?'
-  ).bind(documentId, bankId).first();
+  const doc = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ? AND bank_id = ?')
+    .bind(documentId, bankId)
+    .first();
 
   if (!doc) {
     return c.json({ error: 'not_found', message: 'Document not found' }, 404);
@@ -65,18 +67,18 @@ app.delete('/:document_id', async (c) => {
   const documentId = c.req.param('document_id');
 
   // Check existence
-  const doc = await c.env.DB.prepare(
-    'SELECT id FROM documents WHERE id = ? AND bank_id = ?'
-  ).bind(documentId, bankId).first();
+  const doc = await c.env.DB.prepare('SELECT id FROM documents WHERE id = ? AND bank_id = ?')
+    .bind(documentId, bankId)
+    .first();
 
   if (!doc) {
     return c.json({ error: 'not_found', message: 'Document not found' }, 404);
   }
 
   // Collect memory unit IDs (no FK cascade from documents → memory_units)
-  const rows = await c.env.DB.prepare(
-    'SELECT id FROM memory_units WHERE document_id = ? AND bank_id = ?'
-  ).bind(documentId, bankId).all<{ id: string }>();
+  const rows = await c.env.DB.prepare('SELECT id FROM memory_units WHERE document_id = ? AND bank_id = ?')
+    .bind(documentId, bankId)
+    .all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
   // Delete vectors first (best-effort), then D1 rows
@@ -84,15 +86,13 @@ app.delete('/:document_id', async (c) => {
 
   // Explicitly delete memory_units (schema has no cascade from documents to memory_units)
   if (ids.length > 0) {
-    await c.env.DB.prepare(
-      'DELETE FROM memory_units WHERE document_id = ? AND bank_id = ?'
-    ).bind(documentId, bankId).run();
+    await c.env.DB.prepare('DELETE FROM memory_units WHERE document_id = ? AND bank_id = ?')
+      .bind(documentId, bankId)
+      .run();
   }
 
   // Delete document (cascades to chunks via FK)
-  await c.env.DB.prepare(
-    'DELETE FROM documents WHERE id = ? AND bank_id = ?'
-  ).bind(documentId, bankId).run();
+  await c.env.DB.prepare('DELETE FROM documents WHERE id = ? AND bank_id = ?').bind(documentId, bankId).run();
 
   return c.json({ success: true, deleted: documentId });
 });
@@ -107,9 +107,9 @@ chunkApp.get('/:chunk_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const chunkId = c.req.param('chunk_id');
 
-  const chunk = await c.env.DB.prepare(
-    'SELECT * FROM chunks WHERE chunk_id = ? AND bank_id = ?'
-  ).bind(chunkId, bankId).first();
+  const chunk = await c.env.DB.prepare('SELECT * FROM chunks WHERE chunk_id = ? AND bank_id = ?')
+    .bind(chunkId, bankId)
+    .first();
 
   if (!chunk) {
     return c.json({ error: 'not_found', message: 'Chunk not found' }, 404);

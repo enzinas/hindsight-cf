@@ -35,7 +35,7 @@ app.onError((err, c) => {
       error: 'internal_error',
       message: err.message || 'An unexpected error occurred',
     },
-    500
+    500,
   );
 });
 
@@ -71,8 +71,10 @@ bank.put('/', async (c) => {
   await ensureBank(c.env.DB, bankId);
   if (body.name !== undefined) {
     await c.env.DB.prepare(
-      "UPDATE banks SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-    ).bind(body.name, bankId).run();
+      "UPDATE banks SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+    )
+      .bind(body.name, bankId)
+      .run();
   }
   return c.json({ success: true, bank_id: bankId });
 });
@@ -85,8 +87,10 @@ bank.patch('/', async (c) => {
   await ensureBank(c.env.DB, bankId);
   if (body.name !== undefined) {
     await c.env.DB.prepare(
-      "UPDATE banks SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-    ).bind(body.name, bankId).run();
+      "UPDATE banks SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+    )
+      .bind(body.name, bankId)
+      .run();
   }
   return c.json({ success: true, bank_id: bankId });
 });
@@ -96,9 +100,9 @@ bank.delete('/', async (c) => {
   const bankId = c.req.param('bank_id');
 
   // Collect all memory unit IDs for this bank before deletion
-  const rows = await c.env.DB.prepare(
-    'SELECT id FROM memory_units WHERE bank_id = ?'
-  ).bind(bankId).all<{ id: string }>();
+  const rows = await c.env.DB.prepare('SELECT id FROM memory_units WHERE bank_id = ?')
+    .bind(bankId)
+    .all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
   // Delete vectors first (best-effort), then D1 (cascade handles child tables)
@@ -144,11 +148,13 @@ bank.post('/reflect', async (c) => {
       text: result.text,
       based_on: result.basedOn,
       structured_output: result.structuredOutput,
-      usage: result.usage ? {
-        input_tokens: result.usage.inputTokens,
-        output_tokens: result.usage.outputTokens,
-        total_tokens: result.usage.totalTokens,
-      } : null,
+      usage: result.usage
+        ? {
+            input_tokens: result.usage.inputTokens,
+            output_tokens: result.usage.outputTokens,
+            total_tokens: result.usage.totalTokens,
+          }
+        : null,
       trace: result.trace,
     });
   } catch (err) {
@@ -229,12 +235,14 @@ bank.route('/files', filesRoutes);
 // Consolidation — POST /consolidate
 bank.post('/consolidate', async (c) => {
   const bankId = c.req.param('bank_id')!;
-  const body = await c.req.json<{
-    fact_types?: string[];
-    tags?: string[];
-    max_groups?: number;
-    min_group_size?: number;
-  }>().catch(() => ({} as { fact_types?: string[]; tags?: string[]; max_groups?: number; min_group_size?: number }));
+  const body = await c.req
+    .json<{
+      fact_types?: string[];
+      tags?: string[];
+      max_groups?: number;
+      min_group_size?: number;
+    }>()
+    .catch(() => ({}) as { fact_types?: string[]; tags?: string[]; max_groups?: number; min_group_size?: number });
 
   try {
     const { consolidate } = await import('./engine/consolidate/orchestrator');
@@ -269,17 +277,17 @@ bank.post('/consolidate', async (c) => {
 bank.delete('/observations', async (c) => {
   const bankId = c.req.param('bank_id');
 
-  const rows = await c.env.DB.prepare(
-    "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
-  ).bind(bankId).all<{ id: string }>();
+  const rows = await c.env.DB.prepare("SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'")
+    .bind(bankId)
+    .all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
   // Delete vectors first (best-effort), then D1 rows
   await deleteVectorsBatched(c.env.VECTORIZE, ids);
 
-  const result = await c.env.DB.prepare(
-    "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
-  ).bind(bankId).run();
+  const result = await c.env.DB.prepare("DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'")
+    .bind(bankId)
+    .run();
 
   return c.json({ success: true, deleted_count: result.meta.changes });
 });
@@ -295,8 +303,10 @@ bank.post('/background', async (c) => {
   const newMission = existingMission ? `${existingMission}\n\n${body.content}` : body.content;
 
   await c.env.DB.prepare(
-    "UPDATE banks SET mission = ?, background = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(newMission, body.content, bankId).run();
+    "UPDATE banks SET mission = ?, background = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+  )
+    .bind(newMission, body.content, bankId)
+    .run();
 
   return c.json({ success: true, mission: newMission });
 });
@@ -331,7 +341,9 @@ export default {
         // Mark operation as processing
         await env.DB.prepare(
           "UPDATE async_operations SET status = 'processing', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE operation_id = ?",
-        ).bind(payload.operation_id).run();
+        )
+          .bind(payload.operation_id)
+          .run();
 
         let resultMetadata: Record<string, unknown> = {};
 
@@ -403,7 +415,9 @@ export default {
         // Mark operation as completed
         await env.DB.prepare(
           "UPDATE async_operations SET status = 'completed', result_metadata = ?, completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE operation_id = ?",
-        ).bind(JSON.stringify(resultMetadata), payload.operation_id).run();
+        )
+          .bind(JSON.stringify(resultMetadata), payload.operation_id)
+          .run();
 
         message.ack();
       } catch (err) {
@@ -412,7 +426,9 @@ export default {
         // Mark operation as failed
         await env.DB.prepare(
           "UPDATE async_operations SET status = 'failed', error_message = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE operation_id = ?",
-        ).bind(err instanceof Error ? err.message : 'Unknown error', payload.operation_id).run();
+        )
+          .bind(err instanceof Error ? err.message : 'Unknown error', payload.operation_id)
+          .run();
 
         message.retry();
       }

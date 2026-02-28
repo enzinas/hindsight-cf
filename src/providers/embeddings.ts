@@ -11,10 +11,7 @@ import type { Env } from '../env';
  *
  * Workers AI supports batched embedding requests.
  */
-export async function generateEmbeddings(
-  env: Env,
-  texts: string[],
-): Promise<number[][]> {
+export async function generateEmbeddings(env: Env, texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const model = env.DEFAULT_EMBEDDING_MODEL;
@@ -26,9 +23,7 @@ export async function generateEmbeddings(
 
   const data = result as { data?: number[][] };
   if (!data.data || data.data.length !== texts.length) {
-    throw new Error(
-      `Embedding model returned ${data.data?.length ?? 0} vectors for ${texts.length} texts`,
-    );
+    throw new Error(`Embedding model returned ${data.data?.length ?? 0} vectors for ${texts.length} texts`);
   }
 
   return data.data;
@@ -37,10 +32,7 @@ export async function generateEmbeddings(
 /**
  * Generate a single embedding.
  */
-export async function generateEmbedding(
-  env: Env,
-  text: string,
-): Promise<number[]> {
+export async function generateEmbedding(env: Env, text: string): Promise<number[]> {
   const [embedding] = await generateEmbeddings(env, [text]);
   return embedding;
 }

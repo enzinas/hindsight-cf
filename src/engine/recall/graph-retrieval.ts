@@ -109,8 +109,9 @@ export async function graphRetrieval(
 
   // Remove seed IDs from results (they're already in the result set)
   const seedSet = new Set(seedIds);
-  const candidateIds = [...activation.keys()]
-    .filter((id) => !seedSet.has(id) && (activation.get(id) ?? 0) >= minActivation);
+  const candidateIds = [...activation.keys()].filter(
+    (id) => !seedSet.has(id) && (activation.get(id) ?? 0) >= minActivation,
+  );
 
   if (!candidateIds.length) return [];
 
@@ -242,7 +243,11 @@ export async function temporalRetrieval(
 function parseJsonArray(val: unknown): string[] {
   if (!val || val === '[]') return [];
   if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return []; }
+    try {
+      return JSON.parse(val);
+    } catch {
+      return [];
+    }
   }
   if (Array.isArray(val)) return val as string[];
   return [];
@@ -251,7 +256,11 @@ function parseJsonArray(val: unknown): string[] {
 function parseJsonObj(val: unknown): Record<string, string> {
   if (!val || val === '{}') return {};
   if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return {}; }
+    try {
+      return JSON.parse(val);
+    } catch {
+      return {};
+    }
   }
   return (val as Record<string, string>) ?? {};
 }

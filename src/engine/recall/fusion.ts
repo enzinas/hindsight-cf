@@ -16,9 +16,7 @@ import type { RetrievalResult, MergedCandidate } from './types';
  *
  * @param k - RRF constant (default 60). Higher k gives less weight to top ranks.
  */
-export function reciprocalRankFusion(
-  ...resultLists: RetrievalResult[][]
-): MergedCandidate[] {
+export function reciprocalRankFusion(...resultLists: RetrievalResult[][]): MergedCandidate[] {
   const k = 60;
   const scores = new Map<string, number>();
   const sourceRanks = new Map<string, Record<string, number>>();

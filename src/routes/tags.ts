@@ -12,9 +12,9 @@ app.get('/', async (c) => {
 
   // Tags are stored as JSON arrays in memory_units.tags
   // We need to extract unique tags across all memory units
-  const results = await c.env.DB.prepare(
-    "SELECT DISTINCT tags FROM memory_units WHERE bank_id = ? AND tags != '[]'"
-  ).bind(bankId).all();
+  const results = await c.env.DB.prepare("SELECT DISTINCT tags FROM memory_units WHERE bank_id = ? AND tags != '[]'")
+    .bind(bankId)
+    .all();
 
   const tagSet = new Set<string>();
   for (const row of results.results) {

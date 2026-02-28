@@ -13,8 +13,10 @@ app.get('/', async (c) => {
 
   // Get top entities by mention count
   const entities = await c.env.DB.prepare(
-    'SELECT id, canonical_name, mention_count FROM entities WHERE bank_id = ? ORDER BY mention_count DESC LIMIT ?'
-  ).bind(bankId, limit).all();
+    'SELECT id, canonical_name, mention_count FROM entities WHERE bank_id = ? ORDER BY mention_count DESC LIMIT ?',
+  )
+    .bind(bankId, limit)
+    .all();
 
   // Get co-occurrence edges between those entities
   const entityIds = entities.results.map((e: Record<string, unknown>) => e.id as string);
@@ -27,8 +29,10 @@ app.get('/', async (c) => {
        FROM entity_cooccurrences
        WHERE entity_id_1 IN (${placeholders}) AND entity_id_2 IN (${placeholders})
        ORDER BY cooccurrence_count DESC
-       LIMIT 200`
-    ).bind(...entityIds, ...entityIds).all();
+       LIMIT 200`,
+    )
+      .bind(...entityIds, ...entityIds)
+      .all();
   }
 
   return c.json({

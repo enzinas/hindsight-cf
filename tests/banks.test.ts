@@ -15,20 +15,38 @@ describe('GET /v1/default/banks', () => {
   it('returns empty list when no banks exist', async () => {
     const res = await request(testApp, 'GET', '/v1/default/banks');
     expect(res.status).toBe(200);
-    const body = await res.json() as { banks: string[] };
+    const body = (await res.json()) as { banks: string[] };
     expect(body.banks).toEqual([]);
   });
 
   it('returns list of bank IDs', async () => {
     // Pre-populate banks
     store.tables.banks.push(
-      { bank_id: 'bank1', name: 'Bank 1', disposition: '{}', mission: '', background: '', config: '{}', created_at: '2024-01-01', updated_at: '2024-01-01' },
-      { bank_id: 'bank2', name: 'Bank 2', disposition: '{}', mission: '', background: '', config: '{}', created_at: '2024-01-02', updated_at: '2024-01-02' },
+      {
+        bank_id: 'bank1',
+        name: 'Bank 1',
+        disposition: '{}',
+        mission: '',
+        background: '',
+        config: '{}',
+        created_at: '2024-01-01',
+        updated_at: '2024-01-01',
+      },
+      {
+        bank_id: 'bank2',
+        name: 'Bank 2',
+        disposition: '{}',
+        mission: '',
+        background: '',
+        config: '{}',
+        created_at: '2024-01-02',
+        updated_at: '2024-01-02',
+      },
     );
 
     const res = await request(testApp, 'GET', '/v1/default/banks');
     expect(res.status).toBe(200);
-    const body = await res.json() as { banks: string[] };
+    const body = (await res.json()) as { banks: string[] };
     expect(body.banks).toHaveLength(2);
     expect(body.banks).toContain('bank1');
     expect(body.banks).toContain('bank2');
@@ -39,7 +57,7 @@ describe('GET /v1/default/banks/:bank_id/profile', () => {
   it('auto-creates bank if it does not exist', async () => {
     const res = await request(testApp, 'GET', '/v1/default/banks/new-bank/profile');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.bank_id).toBe('new-bank');
     expect(body.disposition).toEqual({ skepticism: 3, literalism: 3, empathy: 3 });
     expect(body.mission).toBe('');
@@ -59,7 +77,7 @@ describe('GET /v1/default/banks/:bank_id/profile', () => {
 
     const res = await request(testApp, 'GET', '/v1/default/banks/test-bank/profile');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.bank_id).toBe('test-bank');
     expect(body.name).toBe('Test Bank');
     expect((body.disposition as Record<string, number>).skepticism).toBe(1);
@@ -76,7 +94,7 @@ describe('PUT /v1/default/banks/:bank_id/profile/mission', () => {
       content: 'I am a helpful AI assistant',
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(true);
     expect(body.mission).toBe('I am a helpful AI assistant');
   });
@@ -90,7 +108,7 @@ describe('PUT /v1/default/banks/:bank_id/profile/disposition', () => {
       disposition: { skepticism: 5, literalism: 1, empathy: 4 },
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(true);
   });
 
@@ -119,7 +137,7 @@ describe('DELETE /v1/default/banks/:bank_id', () => {
 
     const res = await request(testApp, 'DELETE', '/v1/default/banks/delete-me');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(true);
   });
 
@@ -134,7 +152,7 @@ describe('GET /v1/default/banks/:bank_id/stats', () => {
     // Auto-creates bank
     const res = await request(testApp, 'GET', '/v1/default/banks/stats-test/stats');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.bank_id).toBe('stats-test');
     expect(body.memories).toBeDefined();
     expect(body.entities).toBeDefined();
@@ -148,7 +166,7 @@ describe('Bank config endpoints', () => {
     await request(testApp, 'GET', '/v1/default/banks/config-test/profile');
     const res = await request(testApp, 'GET', '/v1/default/banks/config-test/config');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.bank_id).toBe('config-test');
     expect(body.config).toEqual({});
   });
@@ -159,7 +177,7 @@ describe('Bank config endpoints', () => {
       extraction_mode: 'verbose',
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect((body.config as Record<string, unknown>).extraction_mode).toBe('verbose');
   });
 });

@@ -53,11 +53,19 @@ app.post('/', async (c) => {
     await c.env.DB.prepare(
       `INSERT INTO async_operations (operation_id, bank_id, operation_type, status, created_at, updated_at, task_payload)
        VALUES (?, ?, 'retain', 'pending', ?, ?, ?)`,
-    ).bind(operationId, bankId, now, now, JSON.stringify({
-      items: body.items,
-      document_id: documentId,
-      document_tags: body.document_tags ?? [],
-    })).run();
+    )
+      .bind(
+        operationId,
+        bankId,
+        now,
+        now,
+        JSON.stringify({
+          items: body.items,
+          document_id: documentId,
+          document_tags: body.document_tags ?? [],
+        }),
+      )
+      .run();
 
     await c.env.QUEUE.send({
       operation_id: operationId,
@@ -123,13 +131,17 @@ app.delete('/', async (c) => {
     params.push(factType);
   }
 
-  const rows = await c.env.DB.prepare(selectQuery).bind(...params).all<{ id: string }>();
+  const rows = await c.env.DB.prepare(selectQuery)
+    .bind(...params)
+    .all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
   // Delete vectors first (best-effort) so a partial failure doesn't leave ghost vectors
   await deleteVectorsBatched(c.env.VECTORIZE, ids);
 
-  const result = await c.env.DB.prepare(deleteQuery).bind(...params).run();
+  const result = await c.env.DB.prepare(deleteQuery)
+    .bind(...params)
+    .run();
   return c.json({ success: true, deleted_count: result.meta.changes });
 });
 
@@ -143,9 +155,7 @@ app.post('/recall', async (c) => {
   }
 
   try {
-    const maxResults = body.max_tokens
-      ? Math.min(body.max_tokens, 200)
-      : BUDGET_LIMITS[body.budget ?? 'mid'] ?? 25;
+    const maxResults = body.max_tokens ? Math.min(body.max_tokens, 200) : (BUDGET_LIMITS[body.budget ?? 'mid'] ?? 25);
 
     const result = await recall(c.env, bankId, body.query, {
       maxResults,
@@ -190,13 +200,17 @@ app.get('/list', async (c) => {
   query += ' ORDER BY event_date DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
-  const results = await c.env.DB.prepare(query).bind(...params).all();
+  const results = await c.env.DB.prepare(query)
+    .bind(...params)
+    .all();
 
   const countQuery = factType
     ? 'SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = ?'
     : 'SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ?';
   const countParams = factType ? [bankId, factType] : [bankId];
-  const countResult = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number }>();
+  const countResult = await c.env.DB.prepare(countQuery)
+    .bind(...countParams)
+    .first<{ total: number }>();
 
   return c.json({
     items: results.results.map((row: Record<string, unknown>) => ({
@@ -218,9 +232,9 @@ app.get('/:memory_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const memoryId = c.req.param('memory_id');
 
-  const row = await c.env.DB.prepare(
-    'SELECT * FROM memory_units WHERE id = ? AND bank_id = ?'
-  ).bind(memoryId, bankId).first();
+  const row = await c.env.DB.prepare('SELECT * FROM memory_units WHERE id = ? AND bank_id = ?')
+    .bind(memoryId, bankId)
+    .first();
 
   if (!row) {
     return c.json({ error: 'not_found', message: 'Memory unit not found' }, 404);
@@ -235,9 +249,9 @@ app.delete('/:memory_id', async (c) => {
   const memoryId = c.req.param('memory_id');
 
   // Check existence first so we can 404 without side effects
-  const exists = await c.env.DB.prepare(
-    'SELECT id FROM memory_units WHERE id = ? AND bank_id = ?'
-  ).bind(memoryId, bankId).first();
+  const exists = await c.env.DB.prepare('SELECT id FROM memory_units WHERE id = ? AND bank_id = ?')
+    .bind(memoryId, bankId)
+    .first();
 
   if (!exists) {
     return c.json({ error: 'not_found', message: 'Memory unit not found' }, 404);
@@ -246,9 +260,7 @@ app.delete('/:memory_id', async (c) => {
   // Delete vector first (best-effort), then D1 row
   await deleteVectorsBatched(c.env.VECTORIZE, [memoryId]);
 
-  await c.env.DB.prepare(
-    'DELETE FROM memory_units WHERE id = ? AND bank_id = ?'
-  ).bind(memoryId, bankId).run();
+  await c.env.DB.prepare('DELETE FROM memory_units WHERE id = ? AND bank_id = ?').bind(memoryId, bankId).run();
 
   return c.json({ success: true, deleted: memoryId });
 });
@@ -259,16 +271,20 @@ app.delete('/:memory_id/observations', async (c) => {
   const memoryId = c.req.param('memory_id');
 
   const rows = await c.env.DB.prepare(
-    "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)"
-  ).bind(bankId, `%${memoryId}%`).all<{ id: string }>();
+    "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)",
+  )
+    .bind(bankId, `%${memoryId}%`)
+    .all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
   // Delete vectors first (best-effort), then D1 rows
   await deleteVectorsBatched(c.env.VECTORIZE, ids);
 
   const result = await c.env.DB.prepare(
-    "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)"
-  ).bind(bankId, `%${memoryId}%`).run();
+    "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)",
+  )
+    .bind(bankId, `%${memoryId}%`)
+    .run();
 
   return c.json({ success: true, deleted_count: result.meta.changes });
 });

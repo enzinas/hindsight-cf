@@ -22,15 +22,11 @@ export interface EntityRegenerateResult {
 /**
  * Regenerate an entity's profile from its linked memories.
  */
-export async function regenerateEntity(
-  env: Env,
-  bankId: string,
-  entityId: string,
-): Promise<EntityRegenerateResult> {
+export async function regenerateEntity(env: Env, bankId: string, entityId: string): Promise<EntityRegenerateResult> {
   // Verify entity exists
-  const entity = await env.DB.prepare(
-    'SELECT id, canonical_name FROM entities WHERE id = ? AND bank_id = ?',
-  ).bind(entityId, bankId).first<{ id: string; canonical_name: string }>();
+  const entity = await env.DB.prepare('SELECT id, canonical_name FROM entities WHERE id = ? AND bank_id = ?')
+    .bind(entityId, bankId)
+    .first<{ id: string; canonical_name: string }>();
 
   if (!entity) {
     throw new Error(`Entity not found: ${entityId}`);
@@ -43,7 +39,9 @@ export async function regenerateEntity(
      JOIN unit_entities ue ON ue.unit_id = mu.id
      WHERE ue.entity_id = ? AND mu.bank_id = ?
      ORDER BY mu.event_date ASC`,
-  ).bind(entityId, bankId).all();
+  )
+    .bind(entityId, bankId)
+    .all();
 
   const units = unitRows.results as Array<Record<string, unknown>>;
 
@@ -58,7 +56,7 @@ export async function regenerateEntity(
 
   // Recompute stats
   const dates = units
-    .map((u) => u.event_date as string || u.mentioned_at as string)
+    .map((u) => (u.event_date as string) || (u.mentioned_at as string))
     .filter(Boolean)
     .sort();
 
@@ -66,16 +64,17 @@ export async function regenerateEntity(
   const lastSeen = dates[dates.length - 1] ?? new Date().toISOString();
 
   // Update entity stats
-  await env.DB.prepare(
-    'UPDATE entities SET mention_count = ?, first_seen = ?, last_seen = ? WHERE id = ?',
-  ).bind(units.length, firstSeen, lastSeen, entityId).run();
+  await env.DB.prepare('UPDATE entities SET mention_count = ?, first_seen = ?, last_seen = ? WHERE id = ?')
+    .bind(units.length, firstSeen, lastSeen, entityId)
+    .run();
 
   // Generate a summary observation about this entity using LLM
   let observationId: string | null = null;
   if (units.length >= 3) {
-    const factsText = units.slice(0, 30).map((u, i) =>
-      `${i + 1}. ${u.text}`
-    ).join('\n');
+    const factsText = units
+      .slice(0, 30)
+      .map((u, i) => `${i + 1}. ${u.text}`)
+      .join('\n');
 
     const messages: ChatMessage[] = [
       {
@@ -100,20 +99,24 @@ export async function regenerateEntity(
         await env.DB.prepare(
           `INSERT INTO memory_units (id, bank_id, text, fact_type, confidence_score, source_memory_ids, event_date, mentioned_at)
            VALUES (?, ?, ?, 'observation', 0.8, ?, ?, ?)`,
-        ).bind(observationId, bankId, obsText, JSON.stringify(sourceIds), now, now).run();
+        )
+          .bind(observationId, bankId, obsText, JSON.stringify(sourceIds), now, now)
+          .run();
 
         // Embed and store in Vectorize
         const embedding = await generateEmbedding(env, obsText);
-        await env.VECTORIZE.upsert([{
-          id: observationId,
-          values: embedding,
-          metadata: { bank_id: bankId, fact_type: 'observation' },
-        }]);
+        await env.VECTORIZE.upsert([
+          {
+            id: observationId,
+            values: embedding,
+            metadata: { bank_id: bankId, fact_type: 'observation' },
+          },
+        ]);
 
         // Link the observation to this entity
-        await env.DB.prepare(
-          'INSERT INTO unit_entities (unit_id, entity_id) VALUES (?, ?) ON CONFLICT DO NOTHING',
-        ).bind(observationId, entityId).run();
+        await env.DB.prepare('INSERT INTO unit_entities (unit_id, entity_id) VALUES (?, ?) ON CONFLICT DO NOTHING')
+          .bind(observationId, entityId)
+          .run();
       }
     } catch (err) {
       console.error('Entity regeneration LLM error:', err);

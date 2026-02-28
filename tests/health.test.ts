@@ -16,7 +16,7 @@ describe('GET /health', () => {
   it('returns status ok', async () => {
     const res = await request(testApp, 'GET', '/health');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.status).toBe('ok');
   });
 });
@@ -25,7 +25,7 @@ describe('GET /version', () => {
   it('returns version info with correct structure', async () => {
     const res = await request(testApp, 'GET', '/version');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.version).toBe('0.1.0-test');
     expect(body.runtime).toBe('cloudflare-workers');
 

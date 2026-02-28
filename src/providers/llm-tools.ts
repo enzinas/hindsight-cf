@@ -36,7 +36,10 @@ export interface ToolMessage {
   content: string;
 }
 
-export type ToolChatMessage = ChatMessage | { role: 'assistant'; content: string | null; tool_calls: ToolCall[] } | ToolMessage;
+export type ToolChatMessage =
+  | ChatMessage
+  | { role: 'assistant'; content: string | null; tool_calls: ToolCall[] }
+  | ToolMessage;
 
 export interface ToolCallResponse {
   content: string | null;
@@ -152,10 +155,12 @@ async function callWorkersAIWithTools(
   const model = env.DEFAULT_LLM_MODEL;
 
   // Build tool descriptions for the prompt
-  const toolDescriptions = tools.map((t) => {
-    const params = JSON.stringify(t.function.parameters, null, 2);
-    return `Tool: ${t.function.name}\nDescription: ${t.function.description}\nParameters: ${params}`;
-  }).join('\n\n');
+  const toolDescriptions = tools
+    .map((t) => {
+      const params = JSON.stringify(t.function.parameters, null, 2);
+      return `Tool: ${t.function.name}\nDescription: ${t.function.description}\nParameters: ${params}`;
+    })
+    .join('\n\n');
 
   let toolInstruction = `\n\nYou have access to the following tools:\n\n${toolDescriptions}\n\n`;
 
@@ -181,9 +186,9 @@ If you want to respond with text instead of calling a tool, just respond normall
     }
     // Convert assistant messages with tool_calls
     if (m.role === 'assistant' && 'tool_calls' in m && m.tool_calls) {
-      const callsStr = m.tool_calls.map((tc: ToolCall) =>
-        `Called ${tc.function.name}(${tc.function.arguments})`
-      ).join('\n');
+      const callsStr = m.tool_calls
+        .map((tc: ToolCall) => `Called ${tc.function.name}(${tc.function.arguments})`)
+        .join('\n');
       return { role: 'assistant' as const, content: callsStr };
     }
     return { role: m.role, content: m.content ?? '' };
@@ -214,27 +219,26 @@ If you want to respond with text instead of calling a tool, just respond normall
  */
 function parseToolCallsFromText(text: string): ToolCall[] {
   // Try to find {"tool_call": {...}} pattern
-  const patterns = [
-    /\{"tool_call"\s*:\s*\{[\s\S]*?\}\s*\}/,
-    /```(?:json)?\s*\n?\{"tool_call"[\s\S]*?\}\s*\n?```/,
-  ];
+  const patterns = [/\{"tool_call"\s*:\s*\{[\s\S]*?\}\s*\}/, /```(?:json)?\s*\n?\{"tool_call"[\s\S]*?\}\s*\n?```/];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
       try {
         // Clean markdown if present
-        let jsonStr = match[0].replace(/```(?:json)?\s*\n?/, '').replace(/\n?\s*```/, '');
+        const jsonStr = match[0].replace(/```(?:json)?\s*\n?/, '').replace(/\n?\s*```/, '');
         const parsed = JSON.parse(jsonStr) as { tool_call: { name: string; arguments: Record<string, unknown> } };
         if (parsed.tool_call?.name) {
-          return [{
-            id: `call_${crypto.randomUUID().slice(0, 8)}`,
-            type: 'function',
-            function: {
-              name: parsed.tool_call.name,
-              arguments: JSON.stringify(parsed.tool_call.arguments ?? {}),
+          return [
+            {
+              id: `call_${crypto.randomUUID().slice(0, 8)}`,
+              type: 'function',
+              function: {
+                name: parsed.tool_call.name,
+                arguments: JSON.stringify(parsed.tool_call.arguments ?? {}),
+              },
             },
-          }];
+          ];
         }
       } catch {
         // Continue trying other patterns

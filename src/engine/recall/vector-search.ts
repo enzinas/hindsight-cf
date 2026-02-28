@@ -96,7 +96,11 @@ export async function vectorSearch(
 function parseJsonArray(val: unknown): string[] {
   if (!val || val === '[]') return [];
   if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return []; }
+    try {
+      return JSON.parse(val);
+    } catch {
+      return [];
+    }
   }
   if (Array.isArray(val)) return val as string[];
   return [];
@@ -105,7 +109,11 @@ function parseJsonArray(val: unknown): string[] {
 function parseJsonObj(val: unknown): Record<string, string> {
   if (!val || val === '{}') return {};
   if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return {}; }
+    try {
+      return JSON.parse(val);
+    } catch {
+      return {};
+    }
   }
   return (val as Record<string, string>) ?? {};
 }

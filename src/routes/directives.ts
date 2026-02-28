@@ -11,8 +11,10 @@ app.get('/', async (c) => {
   const bankId = c.req.param('bank_id');
 
   const results = await c.env.DB.prepare(
-    'SELECT * FROM directives WHERE bank_id = ? ORDER BY priority DESC, created_at ASC'
-  ).bind(bankId).all();
+    'SELECT * FROM directives WHERE bank_id = ? ORDER BY priority DESC, created_at ASC',
+  )
+    .bind(bankId)
+    .all();
 
   return c.json({
     items: results.results.map(formatDirective),
@@ -38,8 +40,10 @@ app.post('/', async (c) => {
   const tags = JSON.stringify(body.tags || []);
 
   await c.env.DB.prepare(
-    'INSERT INTO directives (id, bank_id, name, content, priority, is_active, tags) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, bankId, body.name, body.content, body.priority ?? 0, body.is_active !== false ? 1 : 0, tags).run();
+    'INSERT INTO directives (id, bank_id, name, content, priority, is_active, tags) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  )
+    .bind(id, bankId, body.name, body.content, body.priority ?? 0, body.is_active !== false ? 1 : 0, tags)
+    .run();
 
   const directive = await c.env.DB.prepare('SELECT * FROM directives WHERE id = ?').bind(id).first();
   return c.json(formatDirective(directive as Record<string, unknown>), 201);
@@ -50,9 +54,9 @@ app.get('/:directive_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const directiveId = c.req.param('directive_id');
 
-  const directive = await c.env.DB.prepare(
-    'SELECT * FROM directives WHERE id = ? AND bank_id = ?'
-  ).bind(directiveId, bankId).first();
+  const directive = await c.env.DB.prepare('SELECT * FROM directives WHERE id = ? AND bank_id = ?')
+    .bind(directiveId, bankId)
+    .first();
 
   if (!directive) {
     return c.json({ error: 'not_found', message: 'Directive not found' }, 404);
@@ -73,9 +77,9 @@ app.patch('/:directive_id', async (c) => {
     tags?: string[];
   }>();
 
-  const existing = await c.env.DB.prepare(
-    'SELECT * FROM directives WHERE id = ? AND bank_id = ?'
-  ).bind(directiveId, bankId).first();
+  const existing = await c.env.DB.prepare('SELECT * FROM directives WHERE id = ? AND bank_id = ?')
+    .bind(directiveId, bankId)
+    .first();
 
   if (!existing) {
     return c.json({ error: 'not_found', message: 'Directive not found' }, 404);
@@ -84,19 +88,34 @@ app.patch('/:directive_id', async (c) => {
   const updates: string[] = [];
   const values: unknown[] = [];
 
-  if (body.name !== undefined) { updates.push('name = ?'); values.push(body.name); }
-  if (body.content !== undefined) { updates.push('content = ?'); values.push(body.content); }
-  if (body.priority !== undefined) { updates.push('priority = ?'); values.push(body.priority); }
-  if (body.is_active !== undefined) { updates.push('is_active = ?'); values.push(body.is_active ? 1 : 0); }
-  if (body.tags !== undefined) { updates.push('tags = ?'); values.push(JSON.stringify(body.tags)); }
+  if (body.name !== undefined) {
+    updates.push('name = ?');
+    values.push(body.name);
+  }
+  if (body.content !== undefined) {
+    updates.push('content = ?');
+    values.push(body.content);
+  }
+  if (body.priority !== undefined) {
+    updates.push('priority = ?');
+    values.push(body.priority);
+  }
+  if (body.is_active !== undefined) {
+    updates.push('is_active = ?');
+    values.push(body.is_active ? 1 : 0);
+  }
+  if (body.tags !== undefined) {
+    updates.push('tags = ?');
+    values.push(JSON.stringify(body.tags));
+  }
 
   if (updates.length > 0) {
     updates.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
     values.push(directiveId, bankId);
 
-    await c.env.DB.prepare(
-      `UPDATE directives SET ${updates.join(', ')} WHERE id = ? AND bank_id = ?`
-    ).bind(...values).run();
+    await c.env.DB.prepare(`UPDATE directives SET ${updates.join(', ')} WHERE id = ? AND bank_id = ?`)
+      .bind(...values)
+      .run();
   }
 
   const updated = await c.env.DB.prepare('SELECT * FROM directives WHERE id = ?').bind(directiveId).first();
@@ -108,9 +127,9 @@ app.delete('/:directive_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const directiveId = c.req.param('directive_id');
 
-  const result = await c.env.DB.prepare(
-    'DELETE FROM directives WHERE id = ? AND bank_id = ?'
-  ).bind(directiveId, bankId).run();
+  const result = await c.env.DB.prepare('DELETE FROM directives WHERE id = ? AND bank_id = ?')
+    .bind(directiveId, bankId)
+    .run();
 
   if (result.meta.changes === 0) {
     return c.json({ error: 'not_found', message: 'Directive not found' }, 404);

@@ -10,21 +10,12 @@
 
 import type { Env } from '../../env';
 import type { DispositionTraits } from '../../types';
-import type {
-  ReflectConfig,
-  ReflectResult,
-  ReflectToolTrace,
-  ReflectLLMTrace,
-  BasedOn,
-} from './types';
+import type { ReflectConfig, ReflectResult, ReflectToolTrace, ReflectLLMTrace, BasedOn } from './types';
 import { BUDGET_ITERATIONS } from './types';
 import { buildReflectSystemPrompt, buildFinalPrompt } from './prompts';
 import { getReflectTools } from './tools-schema';
 import { executeTool } from './tools';
-import {
-  llmChatWithTools,
-  type ToolChatMessage,
-} from '../../providers/llm-tools';
+import { llmChatWithTools, type ToolChatMessage } from '../../providers/llm-tools';
 import { llmChat, type ChatMessage } from '../../providers/llm';
 
 // =============================================================================
@@ -42,14 +33,14 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
   let totalOutput = 0;
 
   // Load bank profile
-  const bankRow = await env.DB.prepare(
-    'SELECT name, disposition, mission, background FROM banks WHERE bank_id = ?',
-  ).bind(config.bankId).first<{
-    name: string;
-    disposition: string;
-    mission: string;
-    background: string;
-  }>();
+  const bankRow = await env.DB.prepare('SELECT name, disposition, mission, background FROM banks WHERE bank_id = ?')
+    .bind(config.bankId)
+    .first<{
+      name: string;
+      disposition: string;
+      mission: string;
+      background: string;
+    }>();
 
   const profile = {
     name: bankRow?.name ?? config.bankId,
@@ -61,7 +52,9 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
   // Load directives
   const directiveRows = await env.DB.prepare(
     'SELECT id, name, content, priority FROM directives WHERE bank_id = ? AND is_active = 1 ORDER BY priority DESC',
-  ).bind(config.bankId).all();
+  )
+    .bind(config.bankId)
+    .all();
 
   const directives = (directiveRows.results as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
@@ -73,7 +66,9 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
   // Check if bank has mental models
   const mmCount = await env.DB.prepare(
     "SELECT COUNT(*) as c FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model'",
-  ).bind(config.bankId).first<{ c: number }>();
+  )
+    .bind(config.bankId)
+    .first<{ c: number }>();
   const hasMentalModels = (mmCount?.c ?? 0) > 0;
 
   // Build system prompt
@@ -153,14 +148,7 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
       const args = safeParseJSON(tc.function.arguments);
       const toolStart = Date.now();
 
-      const result = await executeTool(
-        env,
-        config.bankId,
-        tc.function.name,
-        args,
-        config.tags,
-        config.tagsMatch,
-      );
+      const result = await executeTool(env, config.bankId, tc.function.name, args, config.tags, config.tagsMatch);
 
       const toolDuration = Date.now() - toolStart;
 
@@ -286,13 +274,15 @@ function getToolChoice(
  * Clean LLM answer text of common artifacts.
  */
 function cleanAnswer(text: string): string {
-  return text
-    // Remove leaked JSON tool call syntax
-    .replace(/\{"tool_call"[\s\S]*?\}/g, '')
-    // Remove markdown code fence artifacts
-    .replace(/```(?:json)?\s*\n?/g, '')
-    .replace(/\n?\s*```/g, '')
-    .trim();
+  return (
+    text
+      // Remove leaked JSON tool call syntax
+      .replace(/\{"tool_call"[\s\S]*?\}/g, '')
+      // Remove markdown code fence artifacts
+      .replace(/```(?:json)?\s*\n?/g, '')
+      .replace(/\n?\s*```/g, '')
+      .trim()
+  );
 }
 
 /**
@@ -340,7 +330,9 @@ async function hydrateBasedOn(
     const rows = await env.DB.prepare(
       `SELECT id, text, fact_type, context, occurred_start, occurred_end
        FROM memory_units WHERE id IN (${placeholders}) AND bank_id = ?`,
-    ).bind(...memoryIds, bankId).all();
+    )
+      .bind(...memoryIds, bankId)
+      .all();
 
     for (const row of rows.results as Array<Record<string, unknown>>) {
       basedOn.memories.push({
@@ -359,7 +351,9 @@ async function hydrateBasedOn(
     const placeholders = mentalModelIds.map(() => '?').join(',');
     const rows = await env.DB.prepare(
       `SELECT id, text, context FROM memory_units WHERE id IN (${placeholders}) AND bank_id = ?`,
-    ).bind(...mentalModelIds, bankId).all();
+    )
+      .bind(...mentalModelIds, bankId)
+      .all();
 
     for (const row of rows.results as Array<Record<string, unknown>>) {
       basedOn.mental_models.push({

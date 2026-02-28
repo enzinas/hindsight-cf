@@ -44,7 +44,7 @@ describe('GET /v1/default/banks/:bank_id/memories/list', () => {
   it('returns empty list when no memories', async () => {
     const res = await request(testApp, 'GET', '/v1/default/banks/test-bank/memories/list');
     expect(res.status).toBe(200);
-    const body = await res.json() as { items: unknown[]; total: number };
+    const body = (await res.json()) as { items: unknown[]; total: number };
     expect(body.items).toEqual([]);
     expect(body.total).toBe(0);
   });
@@ -55,7 +55,7 @@ describe('GET /v1/default/banks/:bank_id/memories/list', () => {
 
     const res = await request(testApp, 'GET', '/v1/default/banks/test-bank/memories/list');
     expect(res.status).toBe(200);
-    const body = await res.json() as { items: Record<string, unknown>[]; total: number };
+    const body = (await res.json()) as { items: Record<string, unknown>[]; total: number };
     expect(body.items).toHaveLength(2);
     expect(body.total).toBe(2);
 
@@ -74,7 +74,7 @@ describe('GET /v1/default/banks/:bank_id/memories/list', () => {
 
     const res = await request(testApp, 'GET', '/v1/default/banks/test-bank/memories/list?type=world');
     expect(res.status).toBe(200);
-    const body = await res.json() as { items: Record<string, unknown>[]; total: number };
+    const body = (await res.json()) as { items: Record<string, unknown>[]; total: number };
     expect(body.items).toHaveLength(2);
     expect(body.total).toBe(2);
   });
@@ -86,7 +86,7 @@ describe('GET /v1/default/banks/:bank_id/memories/list', () => {
 
     const res = await request(testApp, 'GET', '/v1/default/banks/test-bank/memories/list?limit=2&offset=0');
     expect(res.status).toBe(200);
-    const body = await res.json() as { items: unknown[]; total: number; limit: number; offset: number };
+    const body = (await res.json()) as { items: unknown[]; total: number; limit: number; offset: number };
     expect(body.items).toHaveLength(2);
     expect(body.total).toBe(5);
     expect(body.limit).toBe(2);
@@ -100,7 +100,7 @@ describe('GET /v1/default/banks/:bank_id/memories/:memory_id', () => {
 
     const res = await request(testApp, 'GET', `/v1/default/banks/test-bank/memories/${id}`);
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.id).toBe(id);
     expect(body.text).toBe('Specific memory');
   });
@@ -117,7 +117,7 @@ describe('DELETE /v1/default/banks/:bank_id/memories/:memory_id', () => {
 
     const res = await request(testApp, 'DELETE', `/v1/default/banks/test-bank/memories/${id}`);
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(true);
 
     // Verify it's gone
@@ -139,7 +139,7 @@ describe('DELETE /v1/default/banks/:bank_id/memories (clear)', () => {
 
     const res = await request(testApp, 'DELETE', '/v1/default/banks/test-bank/memories');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(true);
     expect(body.deleted_count).toBe(3);
   });
@@ -151,12 +151,12 @@ describe('DELETE /v1/default/banks/:bank_id/memories (clear)', () => {
 
     const res = await request(testApp, 'DELETE', '/v1/default/banks/test-bank/memories?type=world');
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.deleted_count).toBe(2);
 
     // Experience memory should still exist
     const listRes = await request(testApp, 'GET', '/v1/default/banks/test-bank/memories/list');
-    const listBody = await listRes.json() as { items: unknown[]; total: number };
+    const listBody = (await listRes.json()) as { items: unknown[]; total: number };
     expect(listBody.total).toBe(1);
   });
 });
@@ -167,7 +167,7 @@ describe('POST /v1/default/banks/:bank_id/memories (retain)', () => {
       items: [{ content: 'Alice works at Google as a software engineer.' }],
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(true);
     expect(body.bank_id).toBe('test-bank');
     expect(body.items_count).toBe(1);
@@ -175,19 +175,16 @@ describe('POST /v1/default/banks/:bank_id/memories (retain)', () => {
 
     // Verify memories were stored
     const listRes = await request(testApp, 'GET', '/v1/default/banks/test-bank/memories/list');
-    const listBody = await listRes.json() as { items: unknown[]; total: number };
+    const listBody = (await listRes.json()) as { items: unknown[]; total: number };
     expect(listBody.total).toBeGreaterThan(0);
   });
 
   it('retains multiple content items', async () => {
     const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
-      items: [
-        { content: 'Alice works at Google.' },
-        { content: 'Bob lives in Seattle.' },
-      ],
+      items: [{ content: 'Alice works at Google.' }, { content: 'Bob lives in Seattle.' }],
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.success).toBe(true);
     expect(body.items_count).toBe(2);
   });
@@ -204,7 +201,7 @@ describe('POST /v1/default/banks/:bank_id/memories (retain)', () => {
       items: [{ content: 'Some fact about a new bank.' }],
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.bank_id).toBe('new-bank');
   });
 
@@ -241,7 +238,7 @@ describe('POST /v1/default/banks/:bank_id/memories/recall', () => {
       query: 'What does Alice do?',
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { results: unknown[] };
+    const body = (await res.json()) as { results: unknown[] };
     expect(body.results).toBeDefined();
     expect(Array.isArray(body.results)).toBe(true);
   });
@@ -251,7 +248,7 @@ describe('POST /v1/default/banks/:bank_id/memories/recall', () => {
       query: 'What does Alice do?',
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { results: unknown[] };
+    const body = (await res.json()) as { results: unknown[] };
     expect(body.results).toEqual([]);
   });
 
@@ -270,7 +267,7 @@ describe('POST /v1/default/banks/:bank_id/memories/recall', () => {
       trace: true,
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as { results: unknown[]; trace: Record<string, unknown> };
+    const body = (await res.json()) as { results: unknown[]; trace: Record<string, unknown> };
     expect(body.trace).toBeDefined();
     expect(body.trace.semanticCount).toBeDefined();
     expect(body.trace.timings).toBeDefined();
@@ -295,7 +292,7 @@ describe('POST /v1/default/banks/:bank_id/reflect', () => {
       query: 'What do you know about AI?',
     });
     expect(res.status).toBe(200);
-    const body = await res.json() as Record<string, unknown>;
+    const body = (await res.json()) as Record<string, unknown>;
     expect(body.text).toBeDefined();
     expect(typeof body.text).toBe('string');
     expect('based_on' in body).toBe(true);

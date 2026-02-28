@@ -13,12 +13,14 @@ app.get('/', async (c) => {
   const offset = parseInt(c.req.query('offset') || '0');
 
   const results = await c.env.DB.prepare(
-    'SELECT id, canonical_name, mention_count, first_seen, last_seen, metadata FROM entities WHERE bank_id = ? ORDER BY mention_count DESC LIMIT ? OFFSET ?'
-  ).bind(bankId, limit, offset).all();
+    'SELECT id, canonical_name, mention_count, first_seen, last_seen, metadata FROM entities WHERE bank_id = ? ORDER BY mention_count DESC LIMIT ? OFFSET ?',
+  )
+    .bind(bankId, limit, offset)
+    .all();
 
-  const countResult = await c.env.DB.prepare(
-    'SELECT COUNT(*) as total FROM entities WHERE bank_id = ?'
-  ).bind(bankId).first<{ total: number }>();
+  const countResult = await c.env.DB.prepare('SELECT COUNT(*) as total FROM entities WHERE bank_id = ?')
+    .bind(bankId)
+    .first<{ total: number }>();
 
   return c.json({
     items: results.results.map((row: Record<string, unknown>) => ({
@@ -40,9 +42,9 @@ app.get('/:entity_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const entityId = c.req.param('entity_id');
 
-  const entity = await c.env.DB.prepare(
-    'SELECT * FROM entities WHERE id = ? AND bank_id = ?'
-  ).bind(entityId, bankId).first();
+  const entity = await c.env.DB.prepare('SELECT * FROM entities WHERE id = ? AND bank_id = ?')
+    .bind(entityId, bankId)
+    .first();
 
   if (!entity) {
     return c.json({ error: 'not_found', message: 'Entity not found' }, 404);
@@ -55,8 +57,10 @@ app.get('/:entity_id', async (c) => {
      JOIN unit_entities ue ON ue.unit_id = mu.id
      WHERE ue.entity_id = ? AND mu.bank_id = ?
      ORDER BY mu.event_date DESC
-     LIMIT 50`
-  ).bind(entityId, bankId).all();
+     LIMIT 50`,
+  )
+    .bind(entityId, bankId)
+    .all();
 
   return c.json({
     id: entity.id,

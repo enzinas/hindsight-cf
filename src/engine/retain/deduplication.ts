@@ -56,10 +56,7 @@ export async function checkDuplicatesBatch(
 /**
  * Filter out duplicate facts.
  */
-export function filterDuplicates(
-  facts: ProcessedFact[],
-  isDuplicate: boolean[],
-): ProcessedFact[] {
+export function filterDuplicates(facts: ProcessedFact[], isDuplicate: boolean[]): ProcessedFact[] {
   if (facts.length !== isDuplicate.length) {
     throw new Error(`Mismatch: ${facts.length} facts vs ${isDuplicate.length} flags`);
   }

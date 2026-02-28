@@ -171,11 +171,7 @@ async function executeRecall(
 /**
  * Expand memories — get surrounding context (chunk text).
  */
-async function executeExpand(
-  env: Env,
-  bankId: string,
-  args: Record<string, unknown>,
-): Promise<ToolResult> {
+async function executeExpand(env: Env, bankId: string, args: Record<string, unknown>): Promise<ToolResult> {
   const memoryIds = (args.memory_ids ?? []) as string[];
   if (!memoryIds.length) {
     return { output: { results: [] }, memoryIds: [], mentalModelIds: [], observationIds: [] };
@@ -187,20 +183,22 @@ async function executeExpand(
   const units = await env.DB.prepare(
     `SELECT id, text, chunk_id, document_id FROM memory_units
      WHERE id IN (${placeholders}) AND bank_id = ?`,
-  ).bind(...memoryIds, bankId).all();
+  )
+    .bind(...memoryIds, bankId)
+    .all();
 
   // Get chunks for context
-  const chunkIds = (units.results as Array<Record<string, unknown>>)
-    .map((r) => r.chunk_id as string)
-    .filter(Boolean);
+  const chunkIds = (units.results as Array<Record<string, unknown>>).map((r) => r.chunk_id as string).filter(Boolean);
 
-  let chunkMap: Record<string, string> = {};
+  const chunkMap: Record<string, string> = {};
   if (chunkIds.length > 0) {
     const uniqueChunkIds = [...new Set(chunkIds)];
     const chunkPlaceholders = uniqueChunkIds.map(() => '?').join(',');
     const chunks = await env.DB.prepare(
       `SELECT chunk_id, chunk_text FROM chunks WHERE chunk_id IN (${chunkPlaceholders}) AND bank_id = ?`,
-    ).bind(...uniqueChunkIds, bankId).all();
+    )
+      .bind(...uniqueChunkIds, bankId)
+      .all();
 
     for (const row of chunks.results as Array<Record<string, unknown>>) {
       chunkMap[row.chunk_id as string] = row.chunk_text as string;
@@ -210,7 +208,7 @@ async function executeExpand(
   const items = (units.results as Array<Record<string, unknown>>).map((row) => ({
     id: row.id,
     text: row.text,
-    chunk_text: row.chunk_id ? chunkMap[row.chunk_id as string] ?? null : null,
+    chunk_text: row.chunk_id ? (chunkMap[row.chunk_id as string] ?? null) : null,
   }));
 
   return {

@@ -20,7 +20,7 @@ app.get('/profile', async (c) => {
     name: (bank.name as string) || (bank.bank_id as string),
     disposition: JSON.parse(bank.disposition as string),
     mission: bank.mission as string,
-    background: bank.background as string || null,
+    background: (bank.background as string) || null,
   };
 
   return c.json(response);
@@ -38,14 +38,18 @@ app.put('/profile', async (c) => {
       return c.json({ error: 'validation_error', message: 'Disposition traits must be between 1 and 5' }, 400);
     }
     await c.env.DB.prepare(
-      "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-    ).bind(JSON.stringify(body.disposition), bankId).run();
+      "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+    )
+      .bind(JSON.stringify(body.disposition), bankId)
+      .run();
   }
 
   if (body.mission !== undefined) {
     await c.env.DB.prepare(
-      "UPDATE banks SET mission = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-    ).bind(body.mission, bankId).run();
+      "UPDATE banks SET mission = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+    )
+      .bind(body.mission, bankId)
+      .run();
   }
 
   return c.json({ success: true, bank_id: bankId });
@@ -63,8 +67,10 @@ app.put('/profile/disposition', async (c) => {
   }
 
   await c.env.DB.prepare(
-    "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(JSON.stringify(body.disposition), bankId).run();
+    "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+  )
+    .bind(JSON.stringify(body.disposition), bankId)
+    .run();
 
   return c.json({ success: true, disposition: body.disposition });
 });
@@ -76,8 +82,10 @@ app.put('/profile/mission', async (c) => {
   await ensureBank(c.env.DB, bankId);
 
   await c.env.DB.prepare(
-    "UPDATE banks SET mission = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(body.content, bankId).run();
+    "UPDATE banks SET mission = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+  )
+    .bind(body.content, bankId)
+    .run();
 
   return c.json({ success: true, mission: body.content });
 });
@@ -92,8 +100,10 @@ app.post('/profile/background', async (c) => {
   const newMission = existingMission ? `${existingMission}\n\n${body.content}` : body.content;
 
   await c.env.DB.prepare(
-    "UPDATE banks SET mission = ?, background = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(newMission, body.content, bankId).run();
+    "UPDATE banks SET mission = ?, background = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+  )
+    .bind(newMission, body.content, bankId)
+    .run();
 
   return c.json({ success: true, mission: newMission });
 });
@@ -105,10 +115,18 @@ app.get('/stats', async (c) => {
 
   const stats = await c.env.DB.batch([
     c.env.DB.prepare('SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ?').bind(bankId),
-    c.env.DB.prepare("SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'world'").bind(bankId),
-    c.env.DB.prepare("SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'experience'").bind(bankId),
-    c.env.DB.prepare("SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'").bind(bankId),
-    c.env.DB.prepare("SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model'").bind(bankId),
+    c.env.DB.prepare("SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'world'").bind(
+      bankId,
+    ),
+    c.env.DB.prepare("SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'experience'").bind(
+      bankId,
+    ),
+    c.env.DB.prepare("SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'").bind(
+      bankId,
+    ),
+    c.env.DB.prepare(
+      "SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model'",
+    ).bind(bankId),
     c.env.DB.prepare('SELECT COUNT(*) as total FROM entities WHERE bank_id = ?').bind(bankId),
     c.env.DB.prepare('SELECT COUNT(*) as total FROM documents WHERE bank_id = ?').bind(bankId),
     c.env.DB.prepare('SELECT COUNT(*) as total FROM directives WHERE bank_id = ?').bind(bankId),
@@ -150,8 +168,10 @@ app.patch('/config', async (c) => {
   const mergedConfig = { ...existingConfig, ...body };
 
   await c.env.DB.prepare(
-    "UPDATE banks SET config = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(JSON.stringify(mergedConfig), bankId).run();
+    "UPDATE banks SET config = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+  )
+    .bind(JSON.stringify(mergedConfig), bankId)
+    .run();
 
   return c.json({ bank_id: bankId, config: mergedConfig });
 });
@@ -162,8 +182,10 @@ app.delete('/config', async (c) => {
   await ensureBank(c.env.DB, bankId);
 
   await c.env.DB.prepare(
-    "UPDATE banks SET config = '{}', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?"
-  ).bind(bankId).run();
+    "UPDATE banks SET config = '{}', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
+  )
+    .bind(bankId)
+    .run();
 
   return c.json({ bank_id: bankId, config: {} });
 });
@@ -176,9 +198,7 @@ async function ensureBank(db: D1Database, bankId: string): Promise<Record<string
   let bank = await db.prepare('SELECT * FROM banks WHERE bank_id = ?').bind(bankId).first();
 
   if (!bank) {
-    await db.prepare(
-      'INSERT INTO banks (bank_id, name) VALUES (?, ?)'
-    ).bind(bankId, bankId).run();
+    await db.prepare('INSERT INTO banks (bank_id, name) VALUES (?, ?)').bind(bankId, bankId).run();
 
     bank = await db.prepare('SELECT * FROM banks WHERE bank_id = ?').bind(bankId).first();
   }

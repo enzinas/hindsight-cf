@@ -14,7 +14,7 @@ app.post('/retain', (c) => {
       error: 'feature_disabled',
       message: 'File upload is not enabled. This feature will be available in a future release.',
     },
-    404
+    404,
   );
 });
 

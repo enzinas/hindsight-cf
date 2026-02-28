@@ -22,21 +22,19 @@ export interface MentalModelRefreshResult {
 /**
  * Refresh a mental model by re-synthesizing from source memories.
  */
-export async function refreshMentalModel(
-  env: Env,
-  bankId: string,
-  modelId: string,
-): Promise<MentalModelRefreshResult> {
+export async function refreshMentalModel(env: Env, bankId: string, modelId: string): Promise<MentalModelRefreshResult> {
   // Get the existing mental model
   const model = await env.DB.prepare(
     "SELECT id, text, context, source_memory_ids, history FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'",
-  ).bind(modelId, bankId).first<{
-    id: string;
-    text: string;
-    context: string | null;
-    source_memory_ids: string;
-    history: string;
-  }>();
+  )
+    .bind(modelId, bankId)
+    .first<{
+      id: string;
+      text: string;
+      context: string | null;
+      source_memory_ids: string;
+      history: string;
+    }>();
 
   if (!model) {
     throw new Error(`Mental model not found: ${modelId}`);
@@ -59,7 +57,9 @@ export async function refreshMentalModel(
     const placeholders = sourceIds.map(() => '?').join(',');
     const rows = await env.DB.prepare(
       `SELECT id, text, fact_type FROM memory_units WHERE id IN (${placeholders}) AND bank_id = ?`,
-    ).bind(...sourceIds, bankId).all();
+    )
+      .bind(...sourceIds, bankId)
+      .all();
 
     sourceFacts = (rows.results as Array<Record<string, unknown>>).map((r) => ({
       id: r.id as string,
@@ -92,9 +92,10 @@ export async function refreshMentalModel(
   }
 
   // Synthesize updated mental model
-  const factsText = sourceFacts.slice(0, 40).map((f, i) =>
-    `${i + 1}. [${f.type}] ${f.text}`
-  ).join('\n');
+  const factsText = sourceFacts
+    .slice(0, 40)
+    .map((f, i) => `${i + 1}. [${f.type}] ${f.text}`)
+    .join('\n');
 
   const messages: ChatMessage[] = [
     {
@@ -141,22 +142,19 @@ Based on the source facts below, produce an UPDATED version of this mental model
      SET text = ?, source_memory_ids = ?, proof_count = ?, history = ?,
          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
      WHERE id = ? AND bank_id = ?`,
-  ).bind(
-    updatedText,
-    JSON.stringify(sourceIds),
-    sourceFacts.length,
-    JSON.stringify(history),
-    modelId,
-    bankId,
-  ).run();
+  )
+    .bind(updatedText, JSON.stringify(sourceIds), sourceFacts.length, JSON.stringify(history), modelId, bankId)
+    .run();
 
   // Update embedding in Vectorize
   const embedding = await generateEmbedding(env, updatedText);
-  await env.VECTORIZE.upsert([{
-    id: modelId,
-    values: embedding,
-    metadata: { bank_id: bankId, fact_type: 'mental_model' },
-  }]);
+  await env.VECTORIZE.upsert([
+    {
+      id: modelId,
+      values: embedding,
+      metadata: { bank_id: bankId, fact_type: 'mental_model' },
+    },
+  ]);
 
   return {
     success: true,

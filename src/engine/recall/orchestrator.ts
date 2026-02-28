@@ -17,13 +17,7 @@
  */
 
 import type { Env } from '../../env';
-import type {
-  RecallConfig,
-  RecallTrace,
-  ScoredResult,
-  EntityState,
-  ChunkInfo,
-} from './types';
+import type { RecallConfig, RecallTrace, ScoredResult, EntityState, ChunkInfo } from './types';
 import { BUDGET_LIMITS } from './types';
 import { vectorSearch } from './vector-search';
 import { ftsSearch } from './fts-search';
@@ -59,12 +53,7 @@ export interface RecallResponse {
 /**
  * Run the full recall pipeline.
  */
-export async function recall(
-  env: Env,
-  bankId: string,
-  query: string,
-  config: RecallConfig,
-): Promise<RecallResponse> {
+export async function recall(env: Env, bankId: string, query: string, config: RecallConfig): Promise<RecallResponse> {
   const maxResults = config.maxResults || BUDGET_LIMITS[config.maxResults?.toString() ?? 'mid'] || 25;
   const timings: Record<string, number> = {};
 
@@ -92,12 +81,17 @@ export async function recall(
         factTypes: config.factTypes,
         tags: config.tags,
       });
-      return graphRetrieval(env, bankId, seeds.map((s) => s.id), {
-        maxHops: 2,
-        maxResults: maxResults,
-        factTypes: config.factTypes,
-        tags: config.tags,
-      });
+      return graphRetrieval(
+        env,
+        bankId,
+        seeds.map((s) => s.id),
+        {
+          maxHops: 2,
+          maxResults: maxResults,
+          factTypes: config.factTypes,
+          tags: config.tags,
+        },
+      );
     })(),
     temporalRetrieval(env, bankId, queryTimestamp, {
       factTypes: config.factTypes,
@@ -109,12 +103,7 @@ export async function recall(
 
   // Step 2: Reciprocal rank fusion
   const fusionStart = Date.now();
-  const merged = reciprocalRankFusion(
-    semanticResults,
-    ftsResults,
-    graphResults,
-    temporalResults,
-  );
+  const merged = reciprocalRankFusion(semanticResults, ftsResults, graphResults, temporalResults);
   timings.fusion_ms = Date.now() - fusionStart;
 
   // Step 3: Reranking
@@ -195,11 +184,7 @@ function formatResult(scored: ScoredResult): RecallResultItem {
  * Finds entities linked to the returned memories and
  * returns their canonical names with recent observations.
  */
-async function hydrateEntities(
-  env: Env,
-  bankId: string,
-  scored: ScoredResult[],
-): Promise<Record<string, EntityState>> {
+async function hydrateEntities(env: Env, bankId: string, scored: ScoredResult[]): Promise<Record<string, EntityState>> {
   const unitIds = scored.map((s) => s.candidate.result.id);
   if (!unitIds.length) return {};
 
@@ -258,14 +243,8 @@ async function hydrateEntities(
 /**
  * Hydrate chunk data for result memory units.
  */
-async function hydrateChunks(
-  env: Env,
-  bankId: string,
-  scored: ScoredResult[],
-): Promise<Record<string, ChunkInfo>> {
-  const chunkIds = scored
-    .map((s) => s.candidate.result.chunkId)
-    .filter((id): id is string => !!id);
+async function hydrateChunks(env: Env, bankId: string, scored: ScoredResult[]): Promise<Record<string, ChunkInfo>> {
+  const chunkIds = scored.map((s) => s.candidate.result.chunkId).filter((id): id is string => !!id);
 
   if (!chunkIds.length) return {};
 
@@ -306,9 +285,7 @@ async function hydrateSourceFacts(
   scored: ScoredResult[],
 ): Promise<Record<string, RecallResultItem>> {
   // Collect source_memory_ids from observation-type results
-  const unitIds = scored
-    .filter((s) => s.candidate.result.factType === 'observation')
-    .map((s) => s.candidate.result.id);
+  const unitIds = scored.filter((s) => s.candidate.result.factType === 'observation').map((s) => s.candidate.result.id);
 
   if (!unitIds.length) return {};
 
@@ -361,7 +338,11 @@ async function hydrateSourceFacts(
 function parseJsonArray(val: unknown): string[] {
   if (!val || val === '[]') return [];
   if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return []; }
+    try {
+      return JSON.parse(val);
+    } catch {
+      return [];
+    }
   }
   if (Array.isArray(val)) return val as string[];
   return [];
@@ -370,7 +351,11 @@ function parseJsonArray(val: unknown): string[] {
 function parseJsonObj(val: unknown): Record<string, string> {
   if (!val || val === '{}') return {};
   if (typeof val === 'string') {
-    try { return JSON.parse(val); } catch { return {}; }
+    try {
+      return JSON.parse(val);
+    } catch {
+      return {};
+    }
   }
   return (val as Record<string, string>) ?? {};
 }

@@ -11,7 +11,8 @@ export const SEARCH_MENTAL_MODELS_TOOL: ToolDefinition = {
   type: 'function',
   function: {
     name: 'search_mental_models',
-    description: 'Search user-curated mental models (summaries, frameworks, key concepts). These are the highest-priority knowledge source. Always check these first.',
+    description:
+      'Search user-curated mental models (summaries, frameworks, key concepts). These are the highest-priority knowledge source. Always check these first.',
     parameters: {
       type: 'object',
       properties: {
@@ -33,7 +34,8 @@ export const SEARCH_OBSERVATIONS_TOOL: ToolDefinition = {
   type: 'function',
   function: {
     name: 'search_observations',
-    description: 'Search auto-consolidated observations (synthesized knowledge from multiple facts). These represent higher-level patterns and trends.',
+    description:
+      'Search auto-consolidated observations (synthesized knowledge from multiple facts). These represent higher-level patterns and trends.',
     parameters: {
       type: 'object',
       properties: {
@@ -55,7 +57,8 @@ export const RECALL_TOOL: ToolDefinition = {
   type: 'function',
   function: {
     name: 'recall',
-    description: 'Search raw memories (ground truth facts). Use this to find specific facts, events, experiences, and opinions. This is the most comprehensive search.',
+    description:
+      'Search raw memories (ground truth facts). Use this to find specific facts, events, experiences, and opinions. This is the most comprehensive search.',
     parameters: {
       type: 'object',
       properties: {
@@ -77,7 +80,8 @@ export const EXPAND_TOOL: ToolDefinition = {
   type: 'function',
   function: {
     name: 'expand',
-    description: 'Get surrounding context for specific memories. Use this when you need more detail about a memory (e.g., the full document chunk it came from).',
+    description:
+      'Get surrounding context for specific memories. Use this when you need more detail about a memory (e.g., the full document chunk it came from).',
     parameters: {
       type: 'object',
       properties: {
@@ -126,7 +130,8 @@ export function buildDoneTool(hasDirectives: boolean): ToolDefinition {
     type: 'function',
     function: {
       name: 'done',
-      description: 'Submit your final answer. Call this when you have gathered enough evidence to answer the question comprehensively.',
+      description:
+        'Submit your final answer. Call this when you have gathered enough evidence to answer the question comprehensively.',
       parameters: {
         type: 'object',
         properties,
@@ -139,10 +144,7 @@ export function buildDoneTool(hasDirectives: boolean): ToolDefinition {
 /**
  * Get all tools for the reflect agent.
  */
-export function getReflectTools(options: {
-  hasMentalModels: boolean;
-  hasDirectives: boolean;
-}): ToolDefinition[] {
+export function getReflectTools(options: { hasMentalModels: boolean; hasDirectives: boolean }): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
 
   if (options.hasMentalModels) {

@@ -24,7 +24,9 @@ app.get('/', async (c) => {
   query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
-  const results = await c.env.DB.prepare(query).bind(...params).all();
+  const results = await c.env.DB.prepare(query)
+    .bind(...params)
+    .all();
 
   let countQuery = 'SELECT COUNT(*) as total FROM async_operations WHERE bank_id = ?';
   const countParams: unknown[] = [bankId];
@@ -32,7 +34,9 @@ app.get('/', async (c) => {
     countQuery += ' AND status = ?';
     countParams.push(status);
   }
-  const countResult = await c.env.DB.prepare(countQuery).bind(...countParams).first<{ total: number }>();
+  const countResult = await c.env.DB.prepare(countQuery)
+    .bind(...countParams)
+    .first<{ total: number }>();
 
   return c.json({
     items: results.results.map(formatOperation),
@@ -47,9 +51,9 @@ app.get('/:operation_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const operationId = c.req.param('operation_id');
 
-  const op = await c.env.DB.prepare(
-    'SELECT * FROM async_operations WHERE operation_id = ? AND bank_id = ?'
-  ).bind(operationId, bankId).first();
+  const op = await c.env.DB.prepare('SELECT * FROM async_operations WHERE operation_id = ? AND bank_id = ?')
+    .bind(operationId, bankId)
+    .first();
 
   if (!op) {
     return c.json({ error: 'not_found', message: 'Operation not found' }, 404);
@@ -64,9 +68,9 @@ app.delete('/:operation_id', async (c) => {
   const operationId = c.req.param('operation_id');
 
   // Only allow cancelling pending operations
-  const op = await c.env.DB.prepare(
-    'SELECT * FROM async_operations WHERE operation_id = ? AND bank_id = ?'
-  ).bind(operationId, bankId).first();
+  const op = await c.env.DB.prepare('SELECT * FROM async_operations WHERE operation_id = ? AND bank_id = ?')
+    .bind(operationId, bankId)
+    .first();
 
   if (!op) {
     return c.json({ error: 'not_found', message: 'Operation not found' }, 404);
@@ -76,9 +80,9 @@ app.delete('/:operation_id', async (c) => {
     return c.json({ error: 'invalid_state', message: `Cannot cancel operation in '${op.status}' state` }, 409);
   }
 
-  await c.env.DB.prepare(
-    'DELETE FROM async_operations WHERE operation_id = ? AND bank_id = ?'
-  ).bind(operationId, bankId).run();
+  await c.env.DB.prepare('DELETE FROM async_operations WHERE operation_id = ? AND bank_id = ?')
+    .bind(operationId, bankId)
+    .run();
 
   return c.json({ success: true, deleted: operationId });
 });

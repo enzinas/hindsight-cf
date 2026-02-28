@@ -54,18 +54,10 @@ export async function processEntitiesBatch(
   }
 
   // Fact dates for resolution
-  const factDates = facts.map(
-    (f) => f.occurredStart ?? f.mentionedAt,
-  );
+  const factDates = facts.map((f) => f.occurredStart ?? f.mentionedAt);
 
   // Resolve entities and create links
-  const resolvedIds = await resolveEntitiesBatch(
-    db,
-    bankId,
-    unitIds,
-    entitiesPerFact,
-    factDates,
-  );
+  const resolvedIds = await resolveEntitiesBatch(db, bankId, unitIds, entitiesPerFact, factDates);
 
   // Create entity links between units sharing entities
   const entityLinks = createEntityLinks(unitIds, resolvedIds);
@@ -107,11 +99,7 @@ async function resolveEntitiesBatch(
     const textLower = text.toLowerCase();
     const matching = existingRows.filter((row) => {
       const canonLower = row.canonical_name.toLowerCase();
-      return (
-        textLower === canonLower ||
-        textLower.includes(canonLower) ||
-        canonLower.includes(textLower)
-      );
+      return textLower === canonLower || textLower.includes(canonLower) || canonLower.includes(textLower);
     });
     candidatesByText.set(text, matching);
   }
@@ -143,11 +131,7 @@ async function resolveEntitiesBatch(
       }
 
       // Score candidates
-      const nearbyNames = new Set(
-        factEntities
-          .filter((e) => e.text !== entity.text)
-          .map((e) => e.text.toLowerCase()),
-      );
+      const nearbyNames = new Set(factEntities.filter((e) => e.text !== entity.text).map((e) => e.text.toLowerCase()));
 
       let bestId: string | null = null;
       let bestScore = 0;
@@ -156,10 +140,7 @@ async function resolveEntitiesBatch(
         let score = 0;
 
         // 1. Name similarity (0-0.5)
-        const nameSim = stringSimilarity(
-          entity.text.toLowerCase(),
-          candidate.canonical_name.toLowerCase(),
-        );
+        const nameSim = stringSimilarity(entity.text.toLowerCase(), candidate.canonical_name.toLowerCase());
         score += nameSim * 0.5;
 
         // 2. Co-occurring entities (0-0.3)
@@ -174,10 +155,7 @@ async function resolveEntitiesBatch(
 
         // 3. Temporal proximity (0-0.2)
         if (candidate.last_seen && factDate) {
-          const daysDiff =
-            Math.abs(
-              new Date(factDate).getTime() - new Date(candidate.last_seen).getTime(),
-            ) / 86400000;
+          const daysDiff = Math.abs(new Date(factDate).getTime() - new Date(candidate.last_seen).getTime()) / 86400000;
           if (daysDiff < 7) {
             score += Math.max(0, 1.0 - daysDiff / 7) * 0.2;
           }
@@ -205,19 +183,14 @@ async function resolveEntitiesBatch(
   // Batch update existing entities
   if (entitiesToUpdate.length > 0) {
     const stmts = entitiesToUpdate.map(({ id, date }) =>
-      db
-        .prepare('UPDATE entities SET mention_count = mention_count + 1, last_seen = ? WHERE id = ?')
-        .bind(date, id),
+      db.prepare('UPDATE entities SET mention_count = mention_count + 1, last_seen = ? WHERE id = ?').bind(date, id),
     );
     await db.batch(stmts);
   }
 
   // Batch create new entities (dedup by name within batch)
   if (entitiesToCreate.length > 0) {
-    const uniqueByName = new Map<
-      string,
-      { text: string; date: string; unitIds: string[] }
-    >();
+    const uniqueByName = new Map<string, { text: string; date: string; unitIds: string[] }>();
     for (const e of entitiesToCreate) {
       const key = e.text.toLowerCase();
       if (!uniqueByName.has(key)) {
@@ -287,15 +260,9 @@ async function resolveEntitiesBatch(
  * Load co-occurrence data for entity resolution scoring.
  * Returns entityId -> Set of co-occurring canonical names (lowercase).
  */
-async function loadCooccurrences(
-  db: D1Database,
-  bankId: string,
-): Promise<Map<string, Set<string>>> {
+async function loadCooccurrences(db: D1Database, bankId: string): Promise<Map<string, Set<string>>> {
   // Get entity id -> name mapping
-  const entities = await db
-    .prepare('SELECT id, canonical_name FROM entities WHERE bank_id = ?')
-    .bind(bankId)
-    .all();
+  const entities = await db.prepare('SELECT id, canonical_name FROM entities WHERE bank_id = ?').bind(bankId).all();
 
   const idToName = new Map<string, string>();
   const entityIds = new Set<string>();
@@ -336,10 +303,7 @@ async function loadCooccurrences(
 /**
  * Update co-occurrence cache for entities that appear in the same unit.
  */
-async function updateCooccurrences(
-  db: D1Database,
-  unitToEntityIds: Map<string, string[]>,
-): Promise<void> {
+async function updateCooccurrences(db: D1Database, unitToEntityIds: Map<string, string[]>): Promise<void> {
   const pairs = new Set<string>();
   const pairData: Array<[string, string]> = [];
 
@@ -379,10 +343,7 @@ async function updateCooccurrences(
 /**
  * Create entity links between memory units that share entities.
  */
-function createEntityLinks(
-  unitIds: string[],
-  unitToEntityIds: Map<string, string[]>,
-): EntityLink[] {
+function createEntityLinks(unitIds: string[], unitToEntityIds: Map<string, string[]>): EntityLink[] {
   // Invert: entityId -> unitIds
   const entityToUnits = new Map<string, string[]>();
   for (const [unitId, entityIds] of unitToEntityIds) {
@@ -398,9 +359,7 @@ function createEntityLinks(
 
   for (const [entityId, units] of entityToUnits) {
     const newUnits = units.filter((u) => unitIdSet.has(u));
-    const toLink = newUnits.length > MAX_LINKS_PER_ENTITY
-      ? newUnits.slice(-MAX_LINKS_PER_ENTITY)
-      : newUnits;
+    const toLink = newUnits.length > MAX_LINKS_PER_ENTITY ? newUnits.slice(-MAX_LINKS_PER_ENTITY) : newUnits;
 
     // Link new units to each other
     for (let i = 0; i < toLink.length; i++) {
@@ -475,10 +434,13 @@ export function updateFactEntities(
   for (let i = 0; i < facts.length; i++) {
     const entityIds = unitToEntityIds.get(unitIds[i]);
     if (entityIds) {
-      facts[i].entities = entityIds.map((id) => ({
-        name: facts[i].entities.find((e) => e.entityId === id)?.name ?? '',
-        entityId: id,
-      } as EntityRef));
+      facts[i].entities = entityIds.map(
+        (id) =>
+          ({
+            name: facts[i].entities.find((e) => e.entityId === id)?.name ?? '',
+            entityId: id,
+          }) as EntityRef,
+      );
     }
   }
 }

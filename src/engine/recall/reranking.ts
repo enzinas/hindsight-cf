@@ -86,13 +86,11 @@ export async function rerankCandidates(
   }
 
   // Fallback: use RRF scores
-  return candidates
-    .slice(0, limit)
-    .map((c) => ({
-      candidate: c,
-      rerankerScore: c.rrfScore,
-      finalScore: c.rrfScore,
-    }));
+  return candidates.slice(0, limit).map((c) => ({
+    candidate: c,
+    rerankerScore: c.rrfScore,
+    finalScore: c.rrfScore,
+  }));
 }
 
 /** Sigmoid activation for score normalization. */

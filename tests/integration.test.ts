@@ -29,7 +29,7 @@ describe('Integration: Retain → Recall', () => {
       ],
     });
     expect(retainRes.status).toBe(200);
-    const retainBody = await retainRes.json() as { success: boolean; items_count: number };
+    const retainBody = (await retainRes.json()) as { success: boolean; items_count: number };
     expect(retainBody.success).toBe(true);
     expect(retainBody.items_count).toBe(3);
 
@@ -41,23 +41,19 @@ describe('Integration: Retain → Recall', () => {
       query: 'What does Alice do?',
     });
     expect(recallRes.status).toBe(200);
-    const recallBody = await recallRes.json() as { results: Array<{ id: string; text: string }> };
+    const recallBody = (await recallRes.json()) as { results: Array<{ id: string; text: string }> };
     expect(recallBody.results).toBeDefined();
     expect(Array.isArray(recallBody.results)).toBe(true);
     expect(recallBody.results.length).toBeGreaterThan(0);
 
     // At least one result should mention Alice
-    const mentionsAlice = recallBody.results.some((r) =>
-      r.text.toLowerCase().includes('alice')
-    );
+    const mentionsAlice = recallBody.results.some((r) => r.text.toLowerCase().includes('alice'));
     expect(mentionsAlice).toBe(true);
   });
 
   it('recall with trace returns timing data', async () => {
     await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
-      items: [
-        { content: 'The Eiffel Tower is in Paris, France.' },
-      ],
+      items: [{ content: 'The Eiffel Tower is in Paris, France.' }],
     });
 
     const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {
@@ -66,7 +62,7 @@ describe('Integration: Retain → Recall', () => {
     });
     expect(res.status).toBe(200);
 
-    const body = await res.json() as {
+    const body = (await res.json()) as {
       results: unknown[];
       trace: {
         semanticCount: number;
@@ -92,9 +88,7 @@ describe('Integration: Retain → Recall', () => {
 
   it('recall with entity hydration returns entity data', async () => {
     await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
-      items: [
-        { content: 'Alice loves programming in TypeScript and Rust.' },
-      ],
+      items: [{ content: 'Alice loves programming in TypeScript and Rust.' }],
     });
 
     const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {
@@ -103,7 +97,7 @@ describe('Integration: Retain → Recall', () => {
     });
     expect(res.status).toBe(200);
 
-    const body = await res.json() as { results: unknown[]; entities: Record<string, unknown> | null };
+    const body = (await res.json()) as { results: unknown[]; entities: Record<string, unknown> | null };
     expect(body.results.length).toBeGreaterThan(0);
     // entities may be empty if no entities were linked, but the key should exist
     expect(body.entities).toBeDefined();
@@ -123,7 +117,7 @@ describe('Integration: Retain → Recall', () => {
 
     // Vector search may still return results via cosine similarity
     // but FTS should return 0
-    const body = await res.json() as { results: unknown[] };
+    const body = (await res.json()) as { results: unknown[] };
     expect(body.results).toBeDefined();
   });
 
@@ -142,7 +136,7 @@ describe('Integration: Retain → Recall', () => {
     });
     expect(res.status).toBe(200);
 
-    const body = await res.json() as { results: unknown[] };
+    const body = (await res.json()) as { results: unknown[] };
     expect(body.results.length).toBeLessThanOrEqual(10);
   });
 
@@ -163,7 +157,7 @@ describe('Integration: Retain → Recall', () => {
     });
     expect(res.status).toBe(200);
 
-    const body = await res.json() as { results: Array<{ text: string }> };
+    const body = (await res.json()) as { results: Array<{ text: string }> };
     // Should not include bank B's data
     const hasBankB = body.results.some((r) => r.text.includes('bank B'));
     expect(hasBankB).toBe(false);

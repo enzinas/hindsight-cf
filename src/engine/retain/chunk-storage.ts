@@ -46,9 +46,6 @@ export async function storeChunksBatch(
 /**
  * Map fact chunk indices to chunk IDs.
  */
-export function mapFactsToChunks(
-  factsChunkIndices: number[],
-  chunkIdMap: Map<number, string>,
-): Array<string | null> {
+export function mapFactsToChunks(factsChunkIndices: number[], chunkIdMap: Map<number, string>): Array<string | null> {
   return factsChunkIndices.map((idx) => chunkIdMap.get(idx) ?? null);
 }

@@ -14,12 +14,16 @@ app.get('/', async (c) => {
   const offset = parseInt(c.req.query('offset') || '0');
 
   const results = await c.env.DB.prepare(
-    "SELECT id, text, context, proof_count, source_memory_ids, history, created_at, updated_at FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model' ORDER BY created_at DESC LIMIT ? OFFSET ?"
-  ).bind(bankId, limit, offset).all();
+    "SELECT id, text, context, proof_count, source_memory_ids, history, created_at, updated_at FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model' ORDER BY created_at DESC LIMIT ? OFFSET ?",
+  )
+    .bind(bankId, limit, offset)
+    .all();
 
   const countResult = await c.env.DB.prepare(
-    "SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model'"
-  ).bind(bankId).first<{ total: number }>();
+    "SELECT COUNT(*) as total FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model'",
+  )
+    .bind(bankId)
+    .first<{ total: number }>();
 
   return c.json({
     items: results.results.map(formatMentalModel),
@@ -45,8 +49,10 @@ app.post('/', async (c) => {
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
-    "INSERT INTO memory_units (id, bank_id, text, context, fact_type, event_date) VALUES (?, ?, ?, ?, 'mental_model', ?)"
-  ).bind(id, bankId, body.text, body.context ?? null, now).run();
+    "INSERT INTO memory_units (id, bank_id, text, context, fact_type, event_date) VALUES (?, ?, ?, ?, 'mental_model', ?)",
+  )
+    .bind(id, bankId, body.text, body.context ?? null, now)
+    .run();
 
   const row = await c.env.DB.prepare('SELECT * FROM memory_units WHERE id = ?').bind(id).first();
   return c.json(formatMentalModel(row as Record<string, unknown>), 201);
@@ -58,8 +64,10 @@ app.get('/:model_id', async (c) => {
   const modelId = c.req.param('model_id');
 
   const row = await c.env.DB.prepare(
-    "SELECT * FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'"
-  ).bind(modelId, bankId).first();
+    "SELECT * FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'",
+  )
+    .bind(modelId, bankId)
+    .first();
 
   if (!row) {
     return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);
@@ -78,8 +86,10 @@ app.patch('/:model_id', async (c) => {
   }>();
 
   const existing = await c.env.DB.prepare(
-    "SELECT * FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'"
-  ).bind(modelId, bankId).first();
+    "SELECT * FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'",
+  )
+    .bind(modelId, bankId)
+    .first();
 
   if (!existing) {
     return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);
@@ -88,16 +98,22 @@ app.patch('/:model_id', async (c) => {
   const updates: string[] = [];
   const values: unknown[] = [];
 
-  if (body.text !== undefined) { updates.push('text = ?'); values.push(body.text); }
-  if (body.context !== undefined) { updates.push('context = ?'); values.push(body.context); }
+  if (body.text !== undefined) {
+    updates.push('text = ?');
+    values.push(body.text);
+  }
+  if (body.context !== undefined) {
+    updates.push('context = ?');
+    values.push(body.context);
+  }
 
   if (updates.length > 0) {
     updates.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
     values.push(modelId, bankId);
 
-    await c.env.DB.prepare(
-      `UPDATE memory_units SET ${updates.join(', ')} WHERE id = ? AND bank_id = ?`
-    ).bind(...values).run();
+    await c.env.DB.prepare(`UPDATE memory_units SET ${updates.join(', ')} WHERE id = ? AND bank_id = ?`)
+      .bind(...values)
+      .run();
   }
 
   const updated = await c.env.DB.prepare('SELECT * FROM memory_units WHERE id = ?').bind(modelId).first();
@@ -110,8 +126,10 @@ app.delete('/:model_id', async (c) => {
   const modelId = c.req.param('model_id');
 
   const result = await c.env.DB.prepare(
-    "DELETE FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'"
-  ).bind(modelId, bankId).run();
+    "DELETE FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'",
+  )
+    .bind(modelId, bankId)
+    .run();
 
   if (result.meta.changes === 0) {
     return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);

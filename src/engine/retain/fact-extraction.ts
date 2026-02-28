@@ -241,10 +241,7 @@ function sanitizeText(text: string): string {
 /**
  * Infer absolute date from relative temporal expressions.
  */
-function inferTemporalDate(
-  expression: string | null | undefined,
-  eventDate: string,
-): string | null {
+function inferTemporalDate(expression: string | null | undefined, eventDate: string): string | null {
   if (!expression) return null;
 
   // If it's already an ISO date, return as-is

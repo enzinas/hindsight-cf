@@ -16,13 +16,7 @@
  */
 
 import type { Env } from '../../env';
-import type {
-  RetainContent,
-  ProcessedFact,
-  EntityRef,
-  RetainResult,
-  LLMUsage,
-} from './types';
+import type { RetainContent, ProcessedFact, EntityRef, RetainResult, LLMUsage } from './types';
 import { extractFactsFromContents } from './fact-extraction';
 import { generateEmbeddings } from '../../providers/embeddings';
 import { ensureBank, handleDocumentTracking, insertFactsBatch } from './fact-storage';
@@ -44,13 +38,7 @@ function generateUUID(): string {
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20, 32),
-  ].join('-');
+  return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20, 32)].join('-');
 }
 
 /**
@@ -81,9 +69,9 @@ export async function retainBatch(
   }
 
   // Get bank config for mission
-  const bankRow = await env.DB.prepare(
-    'SELECT mission, config FROM banks WHERE bank_id = ?',
-  ).bind(bankId).first<{ mission: string; config: string }>();
+  const bankRow = await env.DB.prepare('SELECT mission, config FROM banks WHERE bank_id = ?')
+    .bind(bankId)
+    .first<{ mission: string; config: string }>();
 
   const bankConfig = {
     mission: bankRow?.mission ?? '',
@@ -95,8 +83,11 @@ export async function retainBatch(
 
   // Step 2: Fact extraction (LLM call)
   console.log(`[retain] Extracting facts from ${contents.length} content items...`);
-  const { facts: extractedFacts, chunks, usage: extractionUsage } =
-    await extractFactsFromContents(env, contents, bankConfig);
+  const {
+    facts: extractedFacts,
+    chunks,
+    usage: extractionUsage,
+  } = await extractFactsFromContents(env, contents, bankConfig);
 
   totalUsage.inputTokens += extractionUsage.inputTokens;
   totalUsage.outputTokens += extractionUsage.outputTokens;
@@ -142,7 +133,7 @@ export async function retainBatch(
     context: fact.context,
     metadata: fact.metadata,
     where: fact.where,
-    entities: fact.entities.map((name) => ({ name } as EntityRef)),
+    entities: fact.entities.map((name) => ({ name }) as EntityRef),
     causalRelations: fact.causalRelations,
     chunkId: null,
     documentId: null,
@@ -200,13 +191,7 @@ export async function retainBatch(
     }
   }
 
-  const entityLinks = await processEntitiesBatch(
-    env.DB,
-    bankId,
-    unitIds,
-    nonDuplicateFacts,
-    userEntitiesPerContent,
-  );
+  const entityLinks = await processEntitiesBatch(env.DB, bankId, unitIds, nonDuplicateFacts, userEntitiesPerContent);
 
   // Step 10: Temporal links
   console.log('[retain] Creating temporal links...');

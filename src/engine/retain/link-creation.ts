@@ -72,8 +72,7 @@ export async function createTemporalLinksBatch(
       .slice(0, 10);
 
     for (const match of matching) {
-      const timeDiffHours =
-        Math.abs(new Date(match.event_date).getTime() - unitTime) / 3600000;
+      const timeDiffHours = Math.abs(new Date(match.event_date).getTime() - unitTime) / 3600000;
       const weight = Math.max(0.3, 1.0 - timeDiffHours / timeWindowHours);
       links.push([unitId, match.id, 'temporal', weight, null]);
     }
@@ -214,15 +213,16 @@ export async function createCausalLinksBatch(
 /**
  * Insert entity links in batch.
  */
-export async function insertEntityLinksBatch(
-  db: D1Database,
-  entityLinks: EntityLink[],
-): Promise<void> {
+export async function insertEntityLinksBatch(db: D1Database, entityLinks: EntityLink[]): Promise<void> {
   if (entityLinks.length === 0) return;
 
-  const links: Array<[string, string, string, number, string | null]> = entityLinks.map(
-    (el) => [el.fromUnitId, el.toUnitId, el.linkType, el.weight, el.entityId],
-  );
+  const links: Array<[string, string, string, number, string | null]> = entityLinks.map((el) => [
+    el.fromUnitId,
+    el.toUnitId,
+    el.linkType,
+    el.weight,
+    el.entityId,
+  ]);
 
   await insertLinksBatch(db, links);
 }

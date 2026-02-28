@@ -128,12 +128,7 @@ beforeEach(() => {
  * Hono returns 404 with "Not Found" text body when no route matches.
  * Our handlers return 404 with JSON body `{ error: "not_found", ... }`.
  */
-async function assertRouteExists(
-  method: string,
-  path: string,
-  body?: unknown,
-  description?: string,
-) {
+async function assertRouteExists(method: string, path: string, body?: unknown, description?: string) {
   const url = `http://localhost${path}`;
   const init: RequestInit = { method };
   if (body) {
@@ -149,7 +144,7 @@ async function assertRouteExists(
     const isRouterNotFound = text === 'Not Found' || text === '404 Not Found';
     expect(
       isRouterNotFound,
-      `Route not found: ${method} ${path}${description ? ` (${description})` : ''} — got router 404. This route is missing from hindsight-cf.`
+      `Route not found: ${method} ${path}${description ? ` (${description})` : ''} — got router 404. This route is missing from hindsight-cf.`,
     ).toBe(false);
   }
 
@@ -196,10 +191,15 @@ describe('API Compatibility — all original hindsight routes must exist', () =>
   });
 
   it('PUT /v1/default/banks/{bank_id}/profile', async () => {
-    await assertRouteExists('PUT', '/v1/default/banks/compat-test/profile', {
-      disposition: { skepticism: 3, literalism: 3, empathy: 3 },
-      mission: 'test',
-    }, 'update profile via PUT');
+    await assertRouteExists(
+      'PUT',
+      '/v1/default/banks/compat-test/profile',
+      {
+        disposition: { skepticism: 3, literalism: 3, empathy: 3 },
+        mission: 'test',
+      },
+      'update profile via PUT',
+    );
   });
 
   it('GET /v1/default/banks/{bank_id}/stats', async () => {
@@ -226,9 +226,14 @@ describe('API Compatibility — all original hindsight routes must exist', () =>
   // Memories
   // =========================================================================
   it('POST /v1/default/banks/{bank_id}/memories (retain)', async () => {
-    await assertRouteExists('POST', '/v1/default/banks/compat-test/memories', {
-      items: [{ content: 'test' }],
-    }, 'retain memories');
+    await assertRouteExists(
+      'POST',
+      '/v1/default/banks/compat-test/memories',
+      {
+        items: [{ content: 'test' }],
+      },
+      'retain memories',
+    );
   });
 
   it('DELETE /v1/default/banks/{bank_id}/memories (clear)', async () => {
@@ -240,9 +245,14 @@ describe('API Compatibility — all original hindsight routes must exist', () =>
   });
 
   it('POST /v1/default/banks/{bank_id}/memories/recall', async () => {
-    await assertRouteExists('POST', '/v1/default/banks/compat-test/memories/recall', {
-      query: 'test',
-    }, 'recall');
+    await assertRouteExists(
+      'POST',
+      '/v1/default/banks/compat-test/memories/recall',
+      {
+        query: 'test',
+      },
+      'recall',
+    );
   });
 
   it('GET /v1/default/banks/{bank_id}/memories/{memory_id}', async () => {
@@ -257,9 +267,14 @@ describe('API Compatibility — all original hindsight routes must exist', () =>
   // Reflect
   // =========================================================================
   it('POST /v1/default/banks/{bank_id}/reflect', async () => {
-    await assertRouteExists('POST', '/v1/default/banks/compat-test/reflect', {
-      query: 'What do you think?',
-    }, 'reflect');
+    await assertRouteExists(
+      'POST',
+      '/v1/default/banks/compat-test/reflect',
+      {
+        query: 'What do you think?',
+      },
+      'reflect',
+    );
   });
 
   // =========================================================================
@@ -308,7 +323,8 @@ describe('API Compatibility — all original hindsight routes must exist', () =>
 
   it('POST /v1/default/banks/{bank_id}/directives', async () => {
     await assertRouteExists('POST', '/v1/default/banks/compat-test/directives', {
-      name: 'Test', content: 'Test directive',
+      name: 'Test',
+      content: 'Test directive',
     });
   });
 

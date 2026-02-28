@@ -76,23 +76,22 @@ Aim for 1-3 observations per group. Quality over quantity.`;
 /**
  * Run the consolidation pipeline.
  */
-export async function consolidate(
-  env: Env,
-  config: ConsolidateConfig,
-): Promise<ConsolidateResult> {
+export async function consolidate(env: Env, config: ConsolidateConfig): Promise<ConsolidateResult> {
   const totalUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
   // Step 1: Fetch unconsolidated facts
   const factTypes = config.factTypes ?? ['world', 'experience', 'opinion'];
   const typePlaceholders = factTypes.map(() => '?').join(',');
 
-  let query = `SELECT id, text, fact_type, context, mentioned_at, occurred_start
+  const query = `SELECT id, text, fact_type, context, mentioned_at, occurred_start
                FROM memory_units
                WHERE bank_id = ? AND fact_type IN (${typePlaceholders})
                ORDER BY event_date DESC LIMIT 500`;
 
   const bindValues: unknown[] = [config.bankId, ...factTypes];
-  const factRows = await env.DB.prepare(query).bind(...bindValues).all();
+  const factRows = await env.DB.prepare(query)
+    .bind(...bindValues)
+    .all();
 
   const facts: MemoryUnit[] = (factRows.results as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
@@ -113,7 +112,10 @@ export async function consolidate(
   }
 
   // Step 2: Generate embeddings for grouping
-  const embeddings = await generateEmbeddings(env, facts.map((f) => f.text));
+  const embeddings = await generateEmbeddings(
+    env,
+    facts.map((f) => f.text),
+  );
 
   // Step 3: Semantic clustering (simple greedy approach)
   const maxGroups = config.maxGroups ?? 20;
@@ -134,9 +136,9 @@ export async function consolidate(
 
   for (const group of groups) {
     const groupFacts = group.map((idx) => facts[idx]);
-    const factsText = groupFacts.map((f, i) =>
-      `${i + 1}. [${f.factType}] ${f.text}${f.context ? ` (context: ${f.context})` : ''}`
-    ).join('\n');
+    const factsText = groupFacts
+      .map((f, i) => `${i + 1}. [${f.factType}] ${f.text}${f.context ? ` (context: ${f.context})` : ''}`)
+      .join('\n');
 
     const messages: ChatMessage[] = [
       { role: 'system', content: CONSOLIDATION_PROMPT },
@@ -166,26 +168,22 @@ export async function consolidate(
         await env.DB.prepare(
           `INSERT INTO memory_units (id, bank_id, text, fact_type, confidence_score, source_memory_ids, event_date, mentioned_at)
            VALUES (?, ?, ?, 'observation', ?, ?, ?, ?)`,
-        ).bind(
-          obsId,
-          config.bankId,
-          obs.observation,
-          obs.confidence ?? 0.8,
-          JSON.stringify(sourceIds),
-          now,
-          now,
-        ).run();
+        )
+          .bind(obsId, config.bankId, obs.observation, obs.confidence ?? 0.8, JSON.stringify(sourceIds), now, now)
+          .run();
 
         // Generate embedding and store in Vectorize
         const obsEmbedding = await generateEmbedding(env, obs.observation);
-        await env.VECTORIZE.upsert([{
-          id: obsId,
-          values: obsEmbedding,
-          metadata: {
-            bank_id: config.bankId,
-            fact_type: 'observation',
+        await env.VECTORIZE.upsert([
+          {
+            id: obsId,
+            values: obsEmbedding,
+            metadata: {
+              bank_id: config.bankId,
+              fact_type: 'observation',
+            },
           },
-        }]);
+        ]);
 
         allObservationIds.push(obsId);
       }
