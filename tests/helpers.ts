@@ -89,8 +89,7 @@ class MockD1PreparedStatement {
 
       // SELECT with JOIN
       if (sqlLower.includes('join')) {
-        // Return empty for joins — simplifies the mock
-        return { results: [], meta: { changes: 0 } };
+        return this.execJoin(sqlLower);
       }
 
       // SELECT
@@ -269,6 +268,89 @@ class MockD1PreparedStatement {
     return { results: [], meta: { changes: 0 } };
   }
 
+  /**
+   * Handle SELECT ... JOIN queries for the recall pipeline.
+   * Supports:
+   *   - memory_units_fts JOIN memory_units (FTS search)
+   *   - unit_entities JOIN entities (entity hydration)
+   *   - unit_entities JOIN memory_units (entity observations)
+   */
+  private execJoin(sqlLower: string): { results: Row[]; meta: { changes: number } } {
+    // FTS JOIN: memory_units_fts fts JOIN memory_units m
+    if (sqlLower.includes('memory_units_fts')) {
+      // FTS mock: do a simple text search across memory_units
+      const matchIdx = sqlLower.indexOf('match');
+      if (matchIdx >= 0) {
+        const ftsQuery = this.params[0] as string;
+        const bankId = this.params[1] as string;
+        const limit = this.params[2] as number ?? 50;
+
+        // Parse OR-separated terms
+        const terms = (ftsQuery || '').split(/\s+OR\s+/i).map((t: string) => t.trim().toLowerCase());
+        const rows = (store.tables.memory_units || []).filter((row) => {
+          if (bankId && String(row.bank_id) !== String(bankId)) return false;
+          const text = String(row.text || '').toLowerCase();
+          return terms.some((t: string) => t && text.includes(t));
+        });
+
+        // Add mock FTS rank
+        const results = rows.slice(0, limit).map((row, i) => ({
+          ...row,
+          fts_rank: -(rows.length - i), // More negative = more relevant
+        }));
+        return { results, meta: { changes: 0 } };
+      }
+    }
+
+    // unit_entities JOIN entities
+    if (sqlLower.includes('unit_entities') && sqlLower.includes('join') && sqlLower.includes('entities')) {
+      const unitEntities = store.tables.unit_entities || [];
+      const entities = store.tables.entities || [];
+      const results: Row[] = [];
+
+      // Figure out what we're filtering by from params
+      if (sqlLower.includes('ue.unit_id in')) {
+        // Entity hydration: find entities linked to given unit IDs
+        const bankId = this.params[this.params.length - 1] as string;
+        const unitIds = this.params.slice(0, this.params.length - 1) as string[];
+
+        for (const ue of unitEntities) {
+          if (!unitIds.includes(String(ue.unit_id))) continue;
+          const entity = entities.find((e) => e.id === ue.entity_id);
+          if (!entity) continue;
+          if (bankId && String(entity.bank_id) !== String(bankId)) continue;
+          results.push({
+            unit_id: ue.unit_id,
+            entity_id: entity.id,
+            canonical_name: entity.canonical_name,
+          });
+        }
+      } else if (sqlLower.includes('ue.entity_id in')) {
+        // Observation hydration: find memory_units linked to given entity IDs
+        const memoryUnits = store.tables.memory_units || [];
+        const bankId = this.params[this.params.length - 1] as string;
+        const entityIds = this.params.slice(0, this.params.length - 1) as string[];
+
+        for (const ue of unitEntities) {
+          if (!entityIds.includes(String(ue.entity_id))) continue;
+          const unit = memoryUnits.find((m) => m.id === ue.unit_id);
+          if (!unit) continue;
+          if (bankId && String(unit.bank_id) !== String(bankId)) continue;
+          results.push({
+            entity_id: ue.entity_id,
+            text: unit.text,
+            mentioned_at: unit.mentioned_at,
+          });
+        }
+      }
+
+      return { results, meta: { changes: 0 } };
+    }
+
+    // Default: return empty
+    return { results: [], meta: { changes: 0 } };
+  }
+
   private getFromTable(sqlLower: string): string {
     const match = sqlLower.match(/from\s+(\w+)/);
     return match ? match[1] : '';
@@ -347,10 +429,38 @@ class MockD1PreparedStatement {
         continue;
       }
 
+      // col IN (?, ?, ...)
+      const inMatch = trimmed.match(/^(\w+)\s+in\s*\(([^)]+)\)/);
+      if (inMatch) {
+        const col = inMatch[1];
+        const placeholders = inMatch[2].split(',').map((s: string) => s.trim());
+        const inValues: unknown[] = [];
+        for (const ph of placeholders) {
+          if (ph === '?') {
+            if (paramIdx < params.length) {
+              inValues.push(params[paramIdx++]);
+            }
+          } else {
+            inValues.push(ph.replace(/'/g, ''));
+          }
+        }
+        if (!inValues.map(String).includes(String(row[col]))) return false;
+        continue;
+      }
+
+      // col BETWEEN ? AND ?
+      const betweenMatch = trimmed.match(/^(\w+)\s+between\s+\?\s+and\s+\?/i);
+      if (betweenMatch) {
+        const col = betweenMatch[1];
+        const low = params[paramIdx++] as string;
+        const high = params[paramIdx++] as string;
+        const val = String(row[col]);
+        if (val < low || val > high) return false;
+        continue;
+      }
+
       // col != '...' — skip (too complex)
-      // col LIKE ? — skip
-      // col IN (...) — skip
-      // If there's an unmatched ?, consume it
+      // col LIKE ? — consume param
       if (trimmed.includes('?') && paramIdx < params.length) {
         paramIdx++;
       }
@@ -421,9 +531,14 @@ class MockWorkersAI {
       return { response: JSON.stringify(facts) };
     }
 
-    // Reranker models
+    // Reranker models: return scores for all documents
     if (model.includes('reranker')) {
-      return { data: [{ index: 0, score: 0.9 }] };
+      const documents = inputs.documents as string[] ?? [];
+      const data = documents.map((_doc: string, i: number) => ({
+        index: i,
+        score: 1.0 - i * 0.1, // Decreasing scores
+      }));
+      return { data };
     }
 
     return { response: '' };
