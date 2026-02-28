@@ -290,10 +290,20 @@ describe('POST /v1/default/banks/:bank_id/memories/recall', () => {
 });
 
 describe('POST /v1/default/banks/:bank_id/reflect', () => {
-  it('returns 501 not implemented', async () => {
+  it('returns 200 with reflect response structure', async () => {
     const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/reflect', {
-      query: 'What do you think about AI?',
+      query: 'What do you know about AI?',
     });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.text).toBeDefined();
+    expect(typeof body.text).toBe('string');
+    expect('based_on' in body).toBe(true);
+    expect('usage' in body).toBe(true);
+  });
+
+  it('returns 400 for missing query', async () => {
+    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/reflect', {});
+    expect(res.status).toBe(400);
   });
 });
