@@ -13,14 +13,59 @@
 import { Hono } from 'hono';
 import type { Env } from '../env';
 import type { RetainRequest, RecallRequest } from '../types';
+import { retainBatch } from '../engine/retain/orchestrator';
+import type { RetainContent } from '../engine/retain/types';
 
 const app = new Hono<{ Bindings: Env }>();
 
 // POST /memories — retain memories (original: POST /banks/{bank_id}/memories)
 app.post('/', async (c) => {
-  const _body = await c.req.json<RetainRequest>();
-  // TODO: Phase 2 — implement retain pipeline
-  return c.json({ error: 'not_implemented', message: 'Retain pipeline not yet implemented' }, 501);
+  const bankId = c.req.param('bank_id')!;
+  const body = await c.req.json<RetainRequest>();
+
+  // Validate request
+  if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
+    return c.json({ error: 'validation_error', message: 'items is required and must be non-empty' }, 400);
+  }
+
+  // Convert RetainItem[] to RetainContent[]
+  const contents: RetainContent[] = body.items.map((item) => ({
+    content: item.content,
+    context: item.context ?? '',
+    eventDate: item.timestamp ?? new Date().toISOString(),
+    metadata: item.metadata ?? {},
+    entities: (item.entities ?? []).map((e) => ({ text: e.text, type: e.type ?? 'CONCEPT' })),
+    tags: item.tags ?? [],
+  }));
+
+  // Determine document_id: use the first item's document_id or generate one
+  const documentId = body.items.find((i) => i.document_id)?.document_id ?? undefined;
+
+  try {
+    const result = await retainBatch(c.env, bankId, contents, {
+      documentId,
+      documentTags: body.document_tags ?? [],
+    });
+
+    return c.json({
+      success: true,
+      bank_id: bankId,
+      items_count: body.items.length,
+      async: false,
+      operation_id: null,
+      usage: {
+        input_tokens: result.usage.inputTokens,
+        output_tokens: result.usage.outputTokens,
+        total_tokens: result.usage.totalTokens,
+      },
+    });
+  } catch (err) {
+    console.error('[retain] Pipeline error:', err);
+    return c.json(
+      { error: 'retain_error', message: err instanceof Error ? err.message : 'Retain pipeline failed' },
+      500,
+    );
+  }
 });
 
 // DELETE /memories — clear bank memories (original: DELETE /banks/{bank_id}/memories)

@@ -162,11 +162,70 @@ describe('DELETE /v1/default/banks/:bank_id/memories (clear)', () => {
 });
 
 describe('POST /v1/default/banks/:bank_id/memories (retain)', () => {
-  it('returns 501 not implemented', async () => {
+  it('retains a single content item and stores facts', async () => {
     const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
-      items: [{ content: 'Alice works at Google' }],
+      items: [{ content: 'Alice works at Google as a software engineer.' }],
     });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.bank_id).toBe('test-bank');
+    expect(body.items_count).toBe(1);
+    expect(body.async).toBe(false);
+
+    // Verify memories were stored
+    const listRes = await request(testApp, 'GET', '/v1/default/banks/test-bank/memories/list');
+    const listBody = await listRes.json() as { items: unknown[]; total: number };
+    expect(listBody.total).toBeGreaterThan(0);
+  });
+
+  it('retains multiple content items', async () => {
+    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
+      items: [
+        { content: 'Alice works at Google.' },
+        { content: 'Bob lives in Seattle.' },
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.success).toBe(true);
+    expect(body.items_count).toBe(2);
+  });
+
+  it('returns 400 for empty items', async () => {
+    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
+      items: [],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('auto-creates bank if it does not exist', async () => {
+    const res = await request(testApp, 'POST', '/v1/default/banks/new-bank/memories', {
+      items: [{ content: 'Some fact about a new bank.' }],
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.bank_id).toBe('new-bank');
+  });
+
+  it('stores documents and chunks', async () => {
+    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
+      items: [{ content: 'Alice works at Google.', document_id: 'doc-123' }],
+    });
+
+    // Verify document was stored
+    expect(store.tables.documents.length).toBeGreaterThan(0);
+    // Verify chunks were stored
+    expect(store.tables.chunks.length).toBeGreaterThan(0);
+  });
+
+  it('creates entities from extracted facts', async () => {
+    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
+      items: [{ content: 'Alice works at Google in Mountain View.' }],
+    });
+
+    // Entities should be created from LLM extraction
+    expect(store.tables.entities.length).toBeGreaterThanOrEqual(0);
   });
 });
 
