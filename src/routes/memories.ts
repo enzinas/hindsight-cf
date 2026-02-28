@@ -111,16 +111,27 @@ app.delete('/', async (c) => {
   const bankId = c.req.param('bank_id');
   const factType = c.req.query('type');
 
-  let query = 'DELETE FROM memory_units WHERE bank_id = ?';
+  // Collect IDs before deleting so we can remove vectors
+  let selectQuery = 'SELECT id FROM memory_units WHERE bank_id = ?';
+  let deleteQuery = 'DELETE FROM memory_units WHERE bank_id = ?';
   const params: unknown[] = [bankId];
 
   if (factType) {
-    query += ' AND fact_type = ?';
+    selectQuery += ' AND fact_type = ?';
+    deleteQuery += ' AND fact_type = ?';
     params.push(factType);
   }
 
-  const result = await c.env.DB.prepare(query).bind(...params).run();
-  // TODO: Also delete from Vectorize index
+  const rows = await c.env.DB.prepare(selectQuery).bind(...params).all<{ id: string }>();
+  const ids = rows.results.map((r) => r.id);
+
+  const result = await c.env.DB.prepare(deleteQuery).bind(...params).run();
+
+  // Delete vectors from Vectorize
+  if (ids.length > 0) {
+    await c.env.VECTORIZE.deleteByIds(ids);
+  }
+
   return c.json({ success: true, deleted_count: result.meta.changes });
 });
 
@@ -233,7 +244,9 @@ app.delete('/:memory_id', async (c) => {
     return c.json({ error: 'not_found', message: 'Memory unit not found' }, 404);
   }
 
-  // TODO: Also delete from Vectorize index
+  // Delete vector from Vectorize
+  await c.env.VECTORIZE.deleteByIds([memoryId]);
+
   return c.json({ success: true, deleted: memoryId });
 });
 
@@ -242,9 +255,20 @@ app.delete('/:memory_id/observations', async (c) => {
   const bankId = c.req.param('bank_id');
   const memoryId = c.req.param('memory_id');
 
+  // Collect IDs before deleting so we can remove vectors
+  const rows = await c.env.DB.prepare(
+    "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)"
+  ).bind(bankId, `%${memoryId}%`).all<{ id: string }>();
+  const ids = rows.results.map((r) => r.id);
+
   const result = await c.env.DB.prepare(
     "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)"
   ).bind(bankId, `%${memoryId}%`).run();
+
+  // Delete vectors from Vectorize
+  if (ids.length > 0) {
+    await c.env.VECTORIZE.deleteByIds(ids);
+  }
 
   return c.json({ success: true, deleted_count: result.meta.changes });
 });

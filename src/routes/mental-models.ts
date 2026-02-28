@@ -116,6 +116,9 @@ app.delete('/:model_id', async (c) => {
     return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);
   }
 
+  // Delete vector from Vectorize
+  await c.env.VECTORIZE.deleteByIds([modelId]);
+
   return c.json({ success: true, deleted: modelId });
 });
 

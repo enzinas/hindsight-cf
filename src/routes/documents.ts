@@ -63,6 +63,12 @@ app.delete('/:document_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const documentId = c.req.param('document_id');
 
+  // Collect memory unit IDs before cascade delete removes them
+  const rows = await c.env.DB.prepare(
+    'SELECT id FROM memory_units WHERE document_id = ? AND bank_id = ?'
+  ).bind(documentId, bankId).all<{ id: string }>();
+  const ids = rows.results.map((r) => r.id);
+
   const result = await c.env.DB.prepare(
     'DELETE FROM documents WHERE id = ? AND bank_id = ?'
   ).bind(documentId, bankId).run();
@@ -71,7 +77,11 @@ app.delete('/:document_id', async (c) => {
     return c.json({ error: 'not_found', message: 'Document not found' }, 404);
   }
 
-  // TODO: Clean up Vectorize vectors for deleted memory units
+  // Delete vectors from Vectorize
+  if (ids.length > 0) {
+    await c.env.VECTORIZE.deleteByIds(ids);
+  }
+
   return c.json({ success: true, deleted: documentId });
 });
 

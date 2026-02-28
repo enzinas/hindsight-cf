@@ -93,10 +93,23 @@ bank.patch('/', async (c) => {
 // DELETE /banks/:bank_id — delete bank
 bank.delete('/', async (c) => {
   const bankId = c.req.param('bank_id');
+
+  // Collect all memory unit IDs for this bank before deletion
+  const rows = await c.env.DB.prepare(
+    'SELECT id FROM memory_units WHERE bank_id = ?'
+  ).bind(bankId).all<{ id: string }>();
+  const ids = rows.results.map((r) => r.id);
+
   const result = await c.env.DB.prepare('DELETE FROM banks WHERE bank_id = ?').bind(bankId).run();
   if (result.meta.changes === 0) {
     return c.json({ error: 'not_found', message: 'Bank not found' }, 404);
   }
+
+  // Delete vectors from Vectorize
+  if (ids.length > 0) {
+    await c.env.VECTORIZE.deleteByIds(ids);
+  }
+
   return c.json({ success: true, deleted: bankId });
 });
 
@@ -256,9 +269,22 @@ bank.post('/consolidate', async (c) => {
 // Observations — DELETE /observations (clear all observations)
 bank.delete('/observations', async (c) => {
   const bankId = c.req.param('bank_id');
+
+  // Collect IDs before deleting so we can remove vectors
+  const rows = await c.env.DB.prepare(
+    "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
+  ).bind(bankId).all<{ id: string }>();
+  const ids = rows.results.map((r) => r.id);
+
   const result = await c.env.DB.prepare(
     "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'"
   ).bind(bankId).run();
+
+  // Delete vectors from Vectorize
+  if (ids.length > 0) {
+    await c.env.VECTORIZE.deleteByIds(ids);
+  }
+
   return c.json({ success: true, deleted_count: result.meta.changes });
 });
 
