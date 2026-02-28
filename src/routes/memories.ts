@@ -44,6 +44,41 @@ app.post('/', async (c) => {
   // Determine document_id: use the first item's document_id or generate one
   const documentId = body.items.find((i) => i.document_id)?.document_id ?? undefined;
 
+  // Async mode: enqueue to Cloudflare Queue
+  if (body.async) {
+    const operationId = crypto.randomUUID();
+    const now = new Date().toISOString();
+
+    await c.env.DB.prepare(
+      `INSERT INTO async_operations (operation_id, bank_id, operation_type, status, created_at, updated_at, task_payload)
+       VALUES (?, ?, 'retain', 'pending', ?, ?, ?)`,
+    ).bind(operationId, bankId, now, now, JSON.stringify({
+      items: body.items,
+      document_id: documentId,
+      document_tags: body.document_tags ?? [],
+    })).run();
+
+    await c.env.QUEUE.send({
+      operation_id: operationId,
+      operation_type: 'retain',
+      bank_id: bankId,
+      task_payload: {
+        items: body.items,
+        document_id: documentId,
+        document_tags: body.document_tags ?? [],
+      },
+    });
+
+    return c.json({
+      success: true,
+      bank_id: bankId,
+      items_count: body.items.length,
+      async: true,
+      operation_id: operationId,
+      usage: null,
+    });
+  }
+
   try {
     const result = await retainBatch(c.env, bankId, contents, {
       documentId,

@@ -105,7 +105,47 @@ bank.route('/memories', memoriesRoutes);
 
 // Reflect — POST /banks/{bank_id}/reflect
 bank.post('/reflect', async (c) => {
-  return c.json({ error: 'not_implemented', message: 'Reflect pipeline not yet implemented' }, 501);
+  const bankId = c.req.param('bank_id')!;
+  const body = await c.req.json<import('./types').ReflectRequest>();
+
+  if (!body.query || typeof body.query !== 'string') {
+    return c.json({ error: 'validation_error', message: 'query is required' }, 400);
+  }
+
+  try {
+    const { reflect } = await import('./engine/reflect/agent');
+    const result = await reflect(c.env, {
+      query: body.query,
+      bankId,
+      budget: body.budget ?? 'mid',
+      context: body.context,
+      maxTokens: body.max_tokens,
+      responseSchema: body.response_schema,
+      tags: body.tags,
+      tagsMatch: body.tags_match,
+      includeFacts: body.include?.facts !== undefined,
+      includeToolCalls: body.include?.tool_calls !== undefined,
+      includeToolOutput: body.include?.tool_calls?.output ?? false,
+    });
+
+    return c.json({
+      text: result.text,
+      based_on: result.basedOn,
+      structured_output: result.structuredOutput,
+      usage: result.usage ? {
+        input_tokens: result.usage.inputTokens,
+        output_tokens: result.usage.outputTokens,
+        total_tokens: result.usage.totalTokens,
+      } : null,
+      trace: result.trace,
+    });
+  } catch (err) {
+    console.error('[reflect] Pipeline error:', err);
+    return c.json(
+      { error: 'reflect_error', message: err instanceof Error ? err.message : 'Reflect pipeline failed' },
+      500,
+    );
+  }
 });
 
 // Entities — GET /entities, GET /entities/:id
@@ -113,7 +153,23 @@ bank.route('/entities', entitiesRoutes);
 
 // Entity regenerate — POST /entities/:entity_id/regenerate
 bank.post('/entities/:entity_id/regenerate', async (c) => {
-  return c.json({ error: 'not_implemented', message: 'Entity regeneration not yet implemented' }, 501);
+  const bankId = c.req.param('bank_id')!;
+  const entityId = c.req.param('entity_id')!;
+
+  try {
+    const { regenerateEntity } = await import('./engine/entity-regenerate');
+    const result = await regenerateEntity(c.env, bankId, entityId);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('not found')) {
+      return c.json({ error: 'not_found', message: err.message }, 404);
+    }
+    console.error('[entity-regenerate] Error:', err);
+    return c.json(
+      { error: 'regenerate_error', message: err instanceof Error ? err.message : 'Entity regeneration failed' },
+      500,
+    );
+  }
 });
 
 // Documents — GET /documents, GET /documents/:id, DELETE /documents/:id
@@ -127,7 +183,23 @@ bank.route('/mental-models', mentalModelsRoutes);
 
 // Mental model refresh — POST /mental-models/:model_id/refresh
 bank.post('/mental-models/:model_id/refresh', async (c) => {
-  return c.json({ error: 'not_implemented', message: 'Mental model refresh not yet implemented' }, 501);
+  const bankId = c.req.param('bank_id')!;
+  const modelId = c.req.param('model_id')!;
+
+  try {
+    const { refreshMentalModel } = await import('./engine/mental-model-refresh');
+    const result = await refreshMentalModel(c.env, bankId, modelId);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('not found')) {
+      return c.json({ error: 'not_found', message: err.message }, 404);
+    }
+    console.error('[mental-model-refresh] Error:', err);
+    return c.json(
+      { error: 'refresh_error', message: err instanceof Error ? err.message : 'Mental model refresh failed' },
+      500,
+    );
+  }
 });
 
 // Operations — GET /operations, GET /operations/:id, DELETE /operations/:id
@@ -144,7 +216,41 @@ bank.route('/files', filesRoutes);
 
 // Consolidation — POST /consolidate
 bank.post('/consolidate', async (c) => {
-  return c.json({ error: 'not_implemented', message: 'Consolidation not yet implemented' }, 501);
+  const bankId = c.req.param('bank_id')!;
+  const body = await c.req.json<{
+    fact_types?: string[];
+    tags?: string[];
+    max_groups?: number;
+    min_group_size?: number;
+  }>().catch(() => ({} as { fact_types?: string[]; tags?: string[]; max_groups?: number; min_group_size?: number }));
+
+  try {
+    const { consolidate } = await import('./engine/consolidate/orchestrator');
+    const result = await consolidate(c.env, {
+      bankId,
+      factTypes: body.fact_types as import('./types').FactType[] | undefined,
+      tags: body.tags,
+      maxGroups: body.max_groups,
+      minGroupSize: body.min_group_size,
+    });
+
+    return c.json({
+      success: result.success,
+      observation_count: result.observationCount,
+      observation_ids: result.observationIds,
+      usage: {
+        input_tokens: result.usage.inputTokens,
+        output_tokens: result.usage.outputTokens,
+        total_tokens: result.usage.totalTokens,
+      },
+    });
+  } catch (err) {
+    console.error('[consolidate] Pipeline error:', err);
+    return c.json(
+      { error: 'consolidate_error', message: err instanceof Error ? err.message : 'Consolidation failed' },
+      500,
+    );
+  }
 });
 
 // Observations — DELETE /observations (clear all observations)
@@ -190,13 +296,102 @@ export default {
 
   async queue(batch: MessageBatch, env: Env): Promise<void> {
     for (const message of batch.messages) {
+      const payload = message.body as {
+        operation_id: string;
+        operation_type: string;
+        bank_id: string;
+        task_payload: Record<string, unknown>;
+      };
+
+      console.log(`[queue] Processing ${payload.operation_type} operation ${payload.operation_id}`);
+
       try {
-        const payload = message.body as Record<string, unknown>;
-        console.log('Processing queue message:', payload);
-        // TODO: Phase 6 — implement async operation processing
+        // Mark operation as processing
+        await env.DB.prepare(
+          "UPDATE async_operations SET status = 'processing', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE operation_id = ?",
+        ).bind(payload.operation_id).run();
+
+        let resultMetadata: Record<string, unknown> = {};
+
+        switch (payload.operation_type) {
+          case 'retain': {
+            const { retainBatch } = await import('./engine/retain/orchestrator');
+            const items = (payload.task_payload.items ?? []) as Array<{
+              content: string;
+              context?: string;
+              timestamp?: string;
+              metadata?: Record<string, string>;
+              entities?: Array<{ text: string; type?: string }>;
+              tags?: string[];
+            }>;
+            const contents = items.map((item) => ({
+              content: item.content,
+              context: item.context ?? '',
+              eventDate: item.timestamp ?? new Date().toISOString(),
+              metadata: item.metadata ?? {},
+              entities: (item.entities ?? []).map((e) => ({ text: e.text, type: e.type ?? 'CONCEPT' })),
+              tags: item.tags ?? [],
+            }));
+            const result = await retainBatch(env, payload.bank_id, contents, {
+              documentId: payload.task_payload.document_id as string | undefined,
+              documentTags: (payload.task_payload.document_tags ?? []) as string[],
+            });
+            resultMetadata = {
+              items_count: items.length,
+              facts_stored: result.unitIdsByContent.flat().length,
+              usage: result.usage,
+            };
+            break;
+          }
+
+          case 'consolidate': {
+            const { consolidate } = await import('./engine/consolidate/orchestrator');
+            const result = await consolidate(env, {
+              bankId: payload.bank_id,
+              factTypes: payload.task_payload.fact_types as import('./types').FactType[] | undefined,
+              tags: payload.task_payload.tags as string[] | undefined,
+            });
+            resultMetadata = {
+              observation_count: result.observationCount,
+              observation_ids: result.observationIds,
+              usage: result.usage,
+            };
+            break;
+          }
+
+          case 'entity_regenerate': {
+            const { regenerateEntity } = await import('./engine/entity-regenerate');
+            const result = await regenerateEntity(env, payload.bank_id, payload.task_payload.entity_id as string);
+            resultMetadata = { ...result };
+            break;
+          }
+
+          case 'mental_model_refresh': {
+            const { refreshMentalModel } = await import('./engine/mental-model-refresh');
+            const result = await refreshMentalModel(env, payload.bank_id, payload.task_payload.model_id as string);
+            resultMetadata = { ...result };
+            break;
+          }
+
+          default:
+            console.warn(`[queue] Unknown operation type: ${payload.operation_type}`);
+            resultMetadata = { error: `Unknown operation type: ${payload.operation_type}` };
+        }
+
+        // Mark operation as completed
+        await env.DB.prepare(
+          "UPDATE async_operations SET status = 'completed', result_metadata = ?, completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE operation_id = ?",
+        ).bind(JSON.stringify(resultMetadata), payload.operation_id).run();
+
         message.ack();
       } catch (err) {
-        console.error('Queue processing error:', err);
+        console.error(`[queue] Error processing ${payload.operation_type}:`, err);
+
+        // Mark operation as failed
+        await env.DB.prepare(
+          "UPDATE async_operations SET status = 'failed', error_message = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE operation_id = ?",
+        ).bind(err instanceof Error ? err.message : 'Unknown error', payload.operation_id).run();
+
         message.retry();
       }
     }
