@@ -21,7 +21,7 @@ app.get('/', async (c) => {
   // Get co-occurrence edges between those entities
   const entityIds = entities.results.map((e: Record<string, unknown>) => e.id as string);
 
-  let edges: D1Result<Record<string, unknown>> = { results: [], success: true, meta: {} as D1ResultMeta };
+  let edges: D1Result<Record<string, unknown>> = { results: [], success: true, meta: {} as D1Result['meta'] };
   if (entityIds.length > 0) {
     const placeholders = entityIds.map(() => '?').join(', ');
     edges = await c.env.DB.prepare(

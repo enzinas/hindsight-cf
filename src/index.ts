@@ -65,7 +65,7 @@ const bank = new Hono<{ Bindings: Env }>();
 
 // PUT /banks/:bank_id — update bank
 bank.put('/', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<{ name?: string }>();
   const { ensureBank } = await import('./routes/banks');
   await ensureBank(c.env.DB, bankId);
@@ -81,7 +81,7 @@ bank.put('/', async (c) => {
 
 // PATCH /banks/:bank_id — update bank
 bank.patch('/', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<{ name?: string }>();
   const { ensureBank } = await import('./routes/banks');
   await ensureBank(c.env.DB, bankId);
@@ -97,7 +97,7 @@ bank.patch('/', async (c) => {
 
 // DELETE /banks/:bank_id — delete bank
 bank.delete('/', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
 
   // Collect all memory unit IDs for this bank before deletion
   const rows = await c.env.DB.prepare('SELECT id FROM memory_units WHERE bank_id = ?')
@@ -275,7 +275,7 @@ bank.post('/consolidate', async (c) => {
 
 // Observations — DELETE /observations (clear all observations)
 bank.delete('/observations', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
 
   const rows = await c.env.DB.prepare("SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation'")
     .bind(bankId)
@@ -294,7 +294,7 @@ bank.delete('/observations', async (c) => {
 
 // Background — POST /background (original: POST /banks/{bank_id}/background)
 bank.post('/background', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<{ content: string }>();
 
   const { ensureBank } = await import('./routes/banks');

@@ -12,7 +12,7 @@ const app = new Hono<{ Bindings: Env }>();
 
 // GET /profile — get bank profile
 app.get('/profile', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const bank = await ensureBank(c.env.DB, bankId);
 
   const response: BankProfileResponse = {
@@ -28,7 +28,7 @@ app.get('/profile', async (c) => {
 
 // PUT /profile — update full profile (disposition + mission)
 app.put('/profile', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<{ disposition?: DispositionTraits; mission?: string }>();
   await ensureBank(c.env.DB, bankId);
 
@@ -57,7 +57,7 @@ app.put('/profile', async (c) => {
 
 // PUT /profile/disposition — update disposition
 app.put('/profile/disposition', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<{ disposition: DispositionTraits }>();
   await ensureBank(c.env.DB, bankId);
 
@@ -77,7 +77,7 @@ app.put('/profile/disposition', async (c) => {
 
 // PUT /profile/mission — set mission
 app.put('/profile/mission', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<{ content: string }>();
   await ensureBank(c.env.DB, bankId);
 
@@ -92,7 +92,7 @@ app.put('/profile/mission', async (c) => {
 
 // POST /profile/background — merge into mission (deprecated route kept for compat)
 app.post('/profile/background', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<{ content: string }>();
   const bank = await ensureBank(c.env.DB, bankId);
 
@@ -110,7 +110,7 @@ app.post('/profile/background', async (c) => {
 
 // GET /stats — bank statistics
 app.get('/stats', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   await ensureBank(c.env.DB, bankId);
 
   const stats = await c.env.DB.batch([
@@ -149,7 +149,7 @@ app.get('/stats', async (c) => {
 
 // GET /config — get bank config
 app.get('/config', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const bank = await ensureBank(c.env.DB, bankId);
 
   return c.json({
@@ -160,7 +160,7 @@ app.get('/config', async (c) => {
 
 // PATCH /config — update bank config
 app.patch('/config', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<Record<string, unknown>>();
   const bank = await ensureBank(c.env.DB, bankId);
 
@@ -178,7 +178,7 @@ app.patch('/config', async (c) => {
 
 // DELETE /config — reset bank config to defaults
 app.delete('/config', async (c) => {
-  const bankId = c.req.param('bank_id');
+  const bankId = c.req.param('bank_id')!;
   await ensureBank(c.env.DB, bankId);
 
   await c.env.DB.prepare(
