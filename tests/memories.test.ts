@@ -230,11 +230,62 @@ describe('POST /v1/default/banks/:bank_id/memories (retain)', () => {
 });
 
 describe('POST /v1/default/banks/:bank_id/memories/recall', () => {
-  it('returns 501 not implemented', async () => {
+  it('returns results for a query', async () => {
+    // First retain some content
+    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
+      items: [{ content: 'Alice works at Google as a software engineer.' }],
+    });
+
+    // Now recall
     const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {
       query: 'What does Alice do?',
     });
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(200);
+    const body = await res.json() as { results: unknown[] };
+    expect(body.results).toBeDefined();
+    expect(Array.isArray(body.results)).toBe(true);
+  });
+
+  it('returns empty results when no memories exist', async () => {
+    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {
+      query: 'What does Alice do?',
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { results: unknown[] };
+    expect(body.results).toEqual([]);
+  });
+
+  it('returns 400 for missing query', async () => {
+    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {});
+    expect(res.status).toBe(400);
+  });
+
+  it('includes trace when requested', async () => {
+    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
+      items: [{ content: 'Bob lives in Seattle.' }],
+    });
+
+    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {
+      query: 'Where does Bob live?',
+      trace: true,
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { results: unknown[]; trace: Record<string, unknown> };
+    expect(body.trace).toBeDefined();
+    expect(body.trace.semanticCount).toBeDefined();
+    expect(body.trace.timings).toBeDefined();
+  });
+
+  it('respects budget parameter', async () => {
+    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
+      items: [{ content: 'Fact one about testing.' }, { content: 'Fact two about testing.' }],
+    });
+
+    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {
+      query: 'testing',
+      budget: 'low',
+    });
+    expect(res.status).toBe(200);
   });
 });
 

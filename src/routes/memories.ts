@@ -15,6 +15,9 @@ import type { Env } from '../env';
 import type { RetainRequest, RecallRequest } from '../types';
 import { retainBatch } from '../engine/retain/orchestrator';
 import type { RetainContent } from '../engine/retain/types';
+import { recall } from '../engine/recall/orchestrator';
+import { BUDGET_LIMITS } from '../engine/recall/types';
+import type { FactType } from '../types';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -88,9 +91,41 @@ app.delete('/', async (c) => {
 
 // POST /memories/recall — recall memories
 app.post('/recall', async (c) => {
-  const _body = await c.req.json<RecallRequest>();
-  // TODO: Phase 3 — implement recall pipeline
-  return c.json({ error: 'not_implemented', message: 'Recall pipeline not yet implemented' }, 501);
+  const bankId = c.req.param('bank_id')!;
+  const body = await c.req.json<RecallRequest>();
+
+  if (!body.query || typeof body.query !== 'string') {
+    return c.json({ error: 'validation_error', message: 'query is required' }, 400);
+  }
+
+  try {
+    const maxResults = body.max_tokens
+      ? Math.min(body.max_tokens, 200)
+      : BUDGET_LIMITS[body.budget ?? 'mid'] ?? 25;
+
+    const result = await recall(c.env, bankId, body.query, {
+      maxResults,
+      factTypes: body.types as FactType[] | undefined,
+      tags: body.tags ?? undefined,
+      tagsMatch: body.tags_match,
+      queryTimestamp: body.query_timestamp,
+      trace: body.trace ?? false,
+      includeEntities: !!body.include?.entities,
+      includeChunks: !!body.include?.chunks,
+      includeSourceFacts: !!body.include?.source_facts,
+      entityMaxTokens: body.include?.entities?.max_tokens,
+      chunkMaxTokens: body.include?.chunks?.max_tokens,
+      sourceFactMaxTokens: body.include?.source_facts?.max_tokens,
+    });
+
+    return c.json(result);
+  } catch (err) {
+    console.error('[recall] Pipeline error:', err);
+    return c.json(
+      { error: 'recall_error', message: err instanceof Error ? err.message : 'Recall pipeline failed' },
+      500,
+    );
+  }
 });
 
 // GET /memories/list — list memory units
