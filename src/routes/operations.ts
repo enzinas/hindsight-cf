@@ -84,7 +84,7 @@ app.delete('/:operation_id', async (c) => {
     .bind(operationId, bankId)
     .run();
 
-  return c.json({ success: true, deleted: operationId });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });
 
 function formatOperation(row: Record<string, unknown>) {

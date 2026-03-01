@@ -147,36 +147,45 @@ app.get('/stats', async (c) => {
   });
 });
 
-// GET /config — get bank config
+// Default config values — resolved config = defaults merged with overrides
+const CONFIG_DEFAULTS: Record<string, unknown> = {};
+
+function resolveConfig(overrides: Record<string, unknown>) {
+  return { ...CONFIG_DEFAULTS, ...overrides };
+}
+
+// GET /config — get bank config (resolved + overrides)
 app.get('/config', async (c) => {
   const bankId = c.req.param('bank_id')!;
   const bank = await ensureBank(c.env.DB, bankId);
 
+  const overrides = JSON.parse(bank.config as string);
   return c.json({
     bank_id: bankId,
-    config: JSON.parse(bank.config as string),
+    config: resolveConfig(overrides),
+    overrides,
   });
 });
 
-// PATCH /config — update bank config
+// PATCH /config — update bank config overrides (merge)
 app.patch('/config', async (c) => {
   const bankId = c.req.param('bank_id')!;
   const body = await c.req.json<Record<string, unknown>>();
   const bank = await ensureBank(c.env.DB, bankId);
 
-  const existingConfig = JSON.parse(bank.config as string);
-  const mergedConfig = { ...existingConfig, ...body };
+  const existingOverrides = JSON.parse(bank.config as string);
+  const mergedOverrides = { ...existingOverrides, ...body };
 
   await c.env.DB.prepare(
     "UPDATE banks SET config = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
   )
-    .bind(JSON.stringify(mergedConfig), bankId)
+    .bind(JSON.stringify(mergedOverrides), bankId)
     .run();
 
-  return c.json({ bank_id: bankId, config: mergedConfig });
+  return c.json({ bank_id: bankId, config: resolveConfig(mergedOverrides), overrides: mergedOverrides });
 });
 
-// DELETE /config — reset bank config to defaults
+// DELETE /config — reset bank config overrides to defaults
 app.delete('/config', async (c) => {
   const bankId = c.req.param('bank_id')!;
   await ensureBank(c.env.DB, bankId);
@@ -187,7 +196,7 @@ app.delete('/config', async (c) => {
     .bind(bankId)
     .run();
 
-  return c.json({ bank_id: bankId, config: {} });
+  return c.json({ bank_id: bankId, config: resolveConfig({}), overrides: {} });
 });
 
 /**

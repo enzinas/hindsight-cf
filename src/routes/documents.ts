@@ -94,7 +94,7 @@ app.delete('/:document_id', async (c) => {
   // Delete document (cascades to chunks via FK)
   await c.env.DB.prepare('DELETE FROM documents WHERE id = ? AND bank_id = ?').bind(documentId, bankId).run();
 
-  return c.json({ success: true, deleted: documentId });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });
 
 export { app as documentsRoutes };
@@ -116,11 +116,11 @@ chunkApp.get('/:chunk_id', async (c) => {
   }
 
   return c.json({
-    id: chunk.chunk_id,
+    chunk_id: chunk.chunk_id,
     document_id: chunk.document_id,
     bank_id: chunk.bank_id,
     chunk_index: chunk.chunk_index,
-    text: chunk.chunk_text,
+    chunk_text: chunk.chunk_text,
     created_at: chunk.created_at,
   });
 });

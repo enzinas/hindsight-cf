@@ -135,7 +135,7 @@ app.delete('/:directive_id', async (c) => {
     return c.json({ error: 'not_found', message: 'Directive not found' }, 404);
   }
 
-  return c.json({ success: true, deleted: directiveId });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });
 
 function formatDirective(row: Record<string, unknown>) {

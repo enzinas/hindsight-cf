@@ -28,7 +28,12 @@ app.get('/version', (c) => {
 });
 
 app.get('/metrics', (c) => {
-  // Stub for v1 — no metrics collection
+  // Support Accept: application/json for generated clients that assume JSON
+  const accept = c.req.header('accept') || '';
+  if (accept.includes('application/json')) {
+    return c.json(null);
+  }
+  // Default: Prometheus text format
   return c.text('# hindsight-cf metrics stub\n', 200, {
     'Content-Type': 'text/plain',
   });

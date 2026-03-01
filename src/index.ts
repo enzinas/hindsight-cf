@@ -24,6 +24,20 @@ import { filesRoutes } from './routes/files';
 
 const app = new Hono<{ Bindings: Env }>();
 
+/** Format a bank row into the standard API response shape. */
+function formatBank(row: Record<string, unknown>) {
+  return {
+    bank_id: row.bank_id as string,
+    name: (row.name as string) || (row.bank_id as string),
+    disposition: typeof row.disposition === 'string' ? JSON.parse(row.disposition) : row.disposition,
+    mission: (row.mission as string) || '',
+    background: (row.background as string) || null,
+    config: typeof row.config === 'string' ? JSON.parse(row.config) : (row.config ?? {}),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
 // Global middleware
 app.use('*', cors());
 
@@ -51,9 +65,9 @@ const api = new Hono<{ Bindings: Env }>();
 
 // Banks (list) — GET /v1/default/banks
 api.get('/banks', async (c) => {
-  const results = await c.env.DB.prepare('SELECT bank_id FROM banks ORDER BY created_at DESC').all();
+  const results = await c.env.DB.prepare('SELECT * FROM banks ORDER BY created_at DESC').all();
   return c.json({
-    banks: results.results.map((row: Record<string, unknown>) => row.bank_id as string),
+    banks: results.results.map((row: Record<string, unknown>) => formatBank(row)),
   });
 });
 
@@ -76,7 +90,8 @@ bank.put('/', async (c) => {
       .bind(body.name, bankId)
       .run();
   }
-  return c.json({ success: true, bank_id: bankId });
+  const updated = await c.env.DB.prepare('SELECT * FROM banks WHERE bank_id = ?').bind(bankId).first();
+  return c.json(formatBank(updated as Record<string, unknown>));
 });
 
 // PATCH /banks/:bank_id — update bank
@@ -92,7 +107,8 @@ bank.patch('/', async (c) => {
       .bind(body.name, bankId)
       .run();
   }
-  return c.json({ success: true, bank_id: bankId });
+  const updated = await c.env.DB.prepare('SELECT * FROM banks WHERE bank_id = ?').bind(bankId).first();
+  return c.json(formatBank(updated as Record<string, unknown>));
 });
 
 // DELETE /banks/:bank_id — delete bank
@@ -113,7 +129,7 @@ bank.delete('/', async (c) => {
     return c.json({ error: 'not_found', message: 'Bank not found' }, 404);
   }
 
-  return c.json({ success: true, deleted: bankId });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });
 
 // Memory operations — POST/DELETE /memories, POST /memories/recall, GET /memories/list, etc.
@@ -289,7 +305,7 @@ bank.delete('/observations', async (c) => {
     .bind(bankId)
     .run();
 
-  return c.json({ success: true, deleted_count: result.meta.changes });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: result.meta.changes });
 });
 
 // Background — POST /background (original: POST /banks/{bank_id}/background)

@@ -35,17 +35,23 @@ app.get('/', async (c) => {
       .all();
   }
 
+  const nodeList = entities.results.map((e: Record<string, unknown>) => ({
+    id: e.id,
+    label: e.canonical_name,
+    size: e.mention_count,
+  }));
+  const edgeList = edges.results.map((e: Record<string, unknown>) => ({
+    from: e.entity_id_1,
+    to: e.entity_id_2,
+    weight: e.cooccurrence_count,
+  }));
+
   return c.json({
-    nodes: entities.results.map((e: Record<string, unknown>) => ({
-      id: e.id,
-      label: e.canonical_name,
-      size: e.mention_count,
-    })),
-    edges: edges.results.map((e: Record<string, unknown>) => ({
-      source: e.entity_id_1,
-      target: e.entity_id_2,
-      weight: e.cooccurrence_count,
-    })),
+    nodes: nodeList,
+    edges: edgeList,
+    total_nodes: nodeList.length,
+    total_edges: edgeList.length,
+    limit,
   });
 });
 

@@ -19,7 +19,7 @@ describe('GET /v1/default/banks', () => {
     expect(body.banks).toEqual([]);
   });
 
-  it('returns list of bank IDs', async () => {
+  it('returns list of bank objects', async () => {
     // Pre-populate banks
     store.tables.banks.push(
       {
@@ -46,10 +46,14 @@ describe('GET /v1/default/banks', () => {
 
     const res = await request(testApp, 'GET', '/v1/default/banks');
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { banks: string[] };
+    const body = (await res.json()) as { banks: Array<Record<string, unknown>> };
     expect(body.banks).toHaveLength(2);
-    expect(body.banks).toContain('bank1');
-    expect(body.banks).toContain('bank2');
+    expect(body.banks[0].bank_id).toBe('bank1');
+    expect(body.banks[0].name).toBe('Bank 1');
+    expect(body.banks[0]).toHaveProperty('disposition');
+    expect(body.banks[0]).toHaveProperty('config');
+    expect(body.banks[0]).toHaveProperty('created_at');
+    expect(body.banks[1].bank_id).toBe('bank2');
   });
 });
 
@@ -162,16 +166,17 @@ describe('GET /v1/default/banks/:bank_id/stats', () => {
 });
 
 describe('Bank config endpoints', () => {
-  it('GET /config returns bank config', async () => {
+  it('GET /config returns resolved config and overrides', async () => {
     await request(testApp, 'GET', '/v1/default/banks/config-test/profile');
     const res = await request(testApp, 'GET', '/v1/default/banks/config-test/config');
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.bank_id).toBe('config-test');
     expect(body.config).toEqual({});
+    expect(body.overrides).toEqual({});
   });
 
-  it('PATCH /config merges config', async () => {
+  it('PATCH /config merges overrides and returns resolved config', async () => {
     await request(testApp, 'GET', '/v1/default/banks/config-test2/profile');
     const res = await request(testApp, 'PATCH', '/v1/default/banks/config-test2/config', {
       extraction_mode: 'verbose',
@@ -179,5 +184,6 @@ describe('Bank config endpoints', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect((body.config as Record<string, unknown>).extraction_mode).toBe('verbose');
+    expect((body.overrides as Record<string, unknown>).extraction_mode).toBe('verbose');
   });
 });

@@ -138,7 +138,7 @@ app.delete('/:model_id', async (c) => {
   // Delete vector from Vectorize (best-effort)
   await deleteVectorsBatched(c.env.VECTORIZE, [modelId]);
 
-  return c.json({ success: true, deleted: modelId });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });
 
 function formatMentalModel(row: Record<string, unknown>) {

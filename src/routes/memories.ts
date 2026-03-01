@@ -142,7 +142,7 @@ app.delete('/', async (c) => {
   const result = await c.env.DB.prepare(deleteQuery)
     .bind(...params)
     .run();
-  return c.json({ success: true, deleted_count: result.meta.changes });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: result.meta.changes });
 });
 
 // POST /memories/recall — recall memories
@@ -262,7 +262,7 @@ app.delete('/:memory_id', async (c) => {
 
   await c.env.DB.prepare('DELETE FROM memory_units WHERE id = ? AND bank_id = ?').bind(memoryId, bankId).run();
 
-  return c.json({ success: true, deleted: memoryId });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });
 
 // DELETE /memories/:memory_id/observations — delete observations for a memory
@@ -286,7 +286,7 @@ app.delete('/:memory_id/observations', async (c) => {
     .bind(bankId, `%${memoryId}%`)
     .run();
 
-  return c.json({ success: true, deleted_count: result.meta.changes });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: result.meta.changes });
 });
 
 export { app as memoriesRoutes };
