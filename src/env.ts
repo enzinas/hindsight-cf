@@ -13,6 +13,9 @@ export interface Env {
   DEFAULT_RERANKER_MODEL: string;
   EMBEDDING_DIMENSIONS: string;
 
+  // Optional auth — if set, all API requests must include a matching Bearer token
+  HINDSIGHT_API_KEY?: string;
+
   // Optional external LLM API keys
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;

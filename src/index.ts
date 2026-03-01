@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './env';
+import { bearerAuth } from './middleware/auth';
 
 // Route modules
 import { healthRoutes } from './routes/health';
@@ -62,6 +63,9 @@ app.route('/', healthRoutes);
 // API routes — all under /v1/default/
 // =============================================================================
 const api = new Hono<{ Bindings: Env }>();
+
+// Auth middleware — protects all /v1/default/* routes
+api.use('*', bearerAuth());
 
 // Banks (list) — GET /v1/default/banks
 api.get('/banks', async (c) => {

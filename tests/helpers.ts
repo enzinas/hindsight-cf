@@ -658,12 +658,17 @@ export async function request(
   method: string,
   path: string,
   body?: unknown,
+  headers?: Record<string, string>,
 ): Promise<{ status: number; json: () => Promise<unknown>; text: () => Promise<string> }> {
   const url = `http://localhost${path}`;
   const init: RequestInit = { method };
+  const mergedHeaders: Record<string, string> = { ...headers };
   if (body) {
     init.body = JSON.stringify(body);
-    init.headers = { 'Content-Type': 'application/json' };
+    mergedHeaders['Content-Type'] = 'application/json';
+  }
+  if (Object.keys(mergedHeaders).length > 0) {
+    init.headers = mergedHeaders;
   }
   const response = await app.fetch(new Request(url, init));
   return {
