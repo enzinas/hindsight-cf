@@ -130,7 +130,7 @@ database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   # your actual ID
 
 ### Step 8 — Run database migrations
 
-Apply the schema to your D1 database. This creates the 10 tables, FTS5 virtual table, and triggers.
+Apply the schema to your D1 database. This creates the tables (including the `api_keys` table for multi-tenant auth), FTS5 virtual table, and triggers.
 
 ```sh
 # For local development
@@ -170,7 +170,7 @@ Run the test suite:
 npm run test
 ```
 
-All 100 tests should pass, including the API compatibility suite that verifies all 48 original hindsight routes.
+All tests should pass, including the API compatibility suite that verifies all 48 original hindsight routes.
 
 ### Step 10 — Deploy to production
 
@@ -237,12 +237,15 @@ These are set in `wrangler.toml` and can be changed before deploying:
 | `DEFAULT_RERANKER_MODEL` | `@cf/baai/bge-reranker-base` | Workers AI reranker model |
 | `EMBEDDING_DIMENSIONS` | `768` | Embedding vector dimensions |
 
-### Secrets (optional, for external LLM providers)
-
-If you want to use an external LLM (OpenAI, Anthropic, etc.) instead of or in addition to Workers AI:
+### Secrets
 
 ```sh
 # Set secrets (Wrangler will prompt you to enter the value securely)
+
+# Auth — single global API key (see Authentication section below)
+npx wrangler secret put HINDSIGHT_API_KEY
+
+# Optional — external LLM providers (OpenAI, Anthropic, etc.)
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put EXTERNAL_LLM_BASE_URL
@@ -250,6 +253,105 @@ npx wrangler secret put EXTERNAL_LLM_MODEL
 ```
 
 Secrets are encrypted and only available to your Worker at runtime. They are never stored in your code or `wrangler.toml`.
+
+## Authentication
+
+hindsight-cf supports optional Bearer-token authentication compatible with the [original Hindsight Python client](https://github.com/vectorize-io/hindsight). Clients send an `Authorization: Bearer <token>` header.
+
+There are three auth modes, checked in priority order:
+
+### Mode 1 — Open (default)
+
+No configuration needed. All requests are allowed without authentication. This matches the original Hindsight OSS default where auth is not enforced.
+
+### Mode 2 — Single key
+
+Set one global API key via the `HINDSIGHT_API_KEY` secret. All tenants share this key.
+
+```sh
+npx wrangler secret put HINDSIGHT_API_KEY
+# Enter your key when prompted
+```
+
+Every API request (under `/v1/...`) must include the header:
+
+```
+Authorization: Bearer <your-key>
+```
+
+Health, version, and metrics endpoints (`/health`, `/version`, `/metrics`) are never auth-gated.
+
+**Error responses:**
+
+| Scenario | Status | Body |
+|---|---|---|
+| Missing `Authorization` header | `401` | `{"error":"unauthorized","message":"Authorization header is required"}` |
+| Non-Bearer scheme (e.g. `Basic`) | `401` | `{"error":"unauthorized","message":"Authorization header must use Bearer scheme"}` |
+| Wrong token | `403` | `{"error":"forbidden","message":"Invalid API key"}` |
+
+### Mode 3 — Multi-tenant
+
+For hosting multiple tenants on one deployment, use the D1 `api_keys` table instead of (or in addition to) the env var. Each API key is scoped to a specific tenant.
+
+**URL structure:** `/v1/:tenant/banks/...` — the `:tenant` segment identifies the tenant (e.g. `/v1/acme/banks`, `/v1/default/banks`).
+
+**Setup:**
+
+1. Run the migration (included in `migrations/0002_api_keys.sql`):
+
+```sh
+npm run db:migrate          # local
+npm run db:migrate:remote   # production
+```
+
+2. Insert keys directly into D1:
+
+```sh
+# Insert a key for the "acme" tenant
+npx wrangler d1 execute hindsight-db --command \
+  "INSERT INTO api_keys (id, token, tenant_id, description) VALUES ('key-1', 'sk-acme-secret-token', 'acme', 'Acme production key')"
+```
+
+The `api_keys` table schema:
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | TEXT (PK) | Auto-generated UUID |
+| `token` | TEXT (UNIQUE) | The Bearer token value |
+| `tenant_id` | TEXT | Tenant this key is scoped to (must match `:tenant` in URL) |
+| `description` | TEXT | Human-readable label |
+| `created_at` | TEXT | ISO 8601 timestamp (auto-set) |
+| `expires_at` | TEXT or NULL | Optional expiry date; expired keys are rejected |
+
+**Behavior:**
+
+- When any rows exist in `api_keys`, auth is enforced for all API routes.
+- A valid token for tenant `acme` can only access `/v1/acme/...` — requests to `/v1/beta/...` with an `acme` key return `403`.
+- If `HINDSIGHT_API_KEY` (env var) is also set, it takes priority as a global key that works for any tenant.
+- If no `Authorization` header is sent and no keys exist in D1, requests pass through (open mode).
+
+**Error responses:**
+
+| Scenario | Status | Body |
+|---|---|---|
+| Missing header (keys exist in D1) | `401` | `{"error":"unauthorized","message":"Authorization header is required"}` |
+| Token not found in D1 | `403` | `{"error":"forbidden","message":"Invalid API key"}` |
+| Token expired | `403` | `{"error":"forbidden","message":"API key has expired"}` |
+| Token valid but wrong tenant | `403` | `{"error":"forbidden","message":"API key is not authorized for this tenant"}` |
+
+### Client usage
+
+Clients (including the official Hindsight Python SDK) send the key as a Bearer token:
+
+```sh
+# curl example
+curl -H "Authorization: Bearer sk-acme-secret-token" \
+  https://your-worker.workers.dev/v1/acme/banks
+
+# Python client
+from hindsight import Hindsight
+client = Hindsight(base_url="https://your-worker.workers.dev", api_key="sk-acme-secret-token")
+```
 
 ## API Reference
 
@@ -280,7 +382,7 @@ This port targets 100% route and response-shape compatibility with the [original
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v1/default/banks` | List all banks (returns full bank objects) |
+| GET | `/v1/{tenant}/banks` | List all banks (returns full bank objects) |
 | PUT | `.../banks/{bank_id}` | Update bank (returns updated bank object) |
 | PATCH | `.../banks/{bank_id}` | Partial update bank (returns updated bank object) |
 | DELETE | `.../banks/{bank_id}` | Delete bank (+ Vectorize cleanup) |
@@ -309,7 +411,7 @@ This port targets 100% route and response-shape compatibility with the [original
 | GET | `.../documents` | List documents |
 | GET | `.../documents/{id}` | Get document |
 | DELETE | `.../documents/{id}` | Delete document (+ memory units + Vectorize cleanup) |
-| GET | `/v1/default/chunks/{id}` | Get chunk (top-level, not bank-scoped) |
+| GET | `/v1/{tenant}/chunks/{id}` | Get chunk (top-level, not bank-scoped) |
 
 ### Directives
 
@@ -355,19 +457,22 @@ This port targets 100% route and response-shape compatibility with the [original
 | GET | `.../tags` | List all tags |
 | POST | `.../files/retain` | File upload (disabled — future release) |
 
-> **Note:** Paths shown as `...` are relative to `/v1/default/banks/{bank_id}` unless otherwise noted.
+> **Note:** Paths shown as `...` are relative to `/v1/{tenant}/banks/{bank_id}` unless otherwise noted. The `{tenant}` segment defaults to `default` for single-tenant deployments.
 
 ## Project Structure
 
 ```
 hindsight-cf/
 ├── migrations/
-│   └── 0001_initial_schema.sql        # D1 schema (10 tables + FTS5)
+│   ├── 0001_initial_schema.sql        # D1 schema (10 tables + FTS5)
+│   └── 0002_api_keys.sql             # API keys table for multi-tenant auth
 ├── src/
 │   ├── index.ts                       # Entry point, Hono app, queue consumer
 │   ├── env.ts                         # Cloudflare bindings type definition
 │   ├── types.ts                       # Shared request/response types
 │   ├── vectorize-utils.ts             # Batched Vectorize delete helper
+│   ├── middleware/
+│   │   └── auth.ts                    # Bearer auth middleware (3 modes)
 │   ├── engine/
 │   │   ├── consolidate/
 │   │   │   └── orchestrator.ts        # Semantic clustering + LLM synthesis
@@ -418,6 +523,7 @@ hindsight-cf/
 │   ├── banks.test.ts                  # Bank CRUD + config tests
 │   ├── directives.test.ts            # Directive CRUD tests
 │   ├── memories.test.ts               # Memory retain/recall/delete tests
+│   ├── auth.test.ts                   # Auth middleware tests (all 3 modes)
 │   ├── integration.test.ts            # End-to-end retain → recall tests
 │   └── api-compatibility.test.ts      # Verifies all 48 original routes exist
 ├── .prettierrc                        # Prettier config (120 width, single quotes)
