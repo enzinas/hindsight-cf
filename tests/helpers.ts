@@ -28,6 +28,7 @@ class InMemoryStore {
       memory_links: [],
       directives: [],
       async_operations: [],
+      api_keys: [],
     };
   }
 }

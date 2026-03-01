@@ -60,11 +60,11 @@ app.onError((err, c) => {
 app.route('/', healthRoutes);
 
 // =============================================================================
-// API routes — all under /v1/default/
+// API routes — under /v1/:tenant/ (e.g. /v1/default/, /v1/acme/, etc.)
 // =============================================================================
 const api = new Hono<{ Bindings: Env }>();
 
-// Auth middleware — protects all /v1/default/* routes
+// Auth middleware — protects all /v1/:tenant/* routes
 api.use('*', bearerAuth());
 
 // Banks (list) — GET /v1/default/banks
@@ -337,8 +337,8 @@ bank.route('/', banksRoutes);
 // Mount bank routes under /banks/:bank_id
 api.route('/banks/:bank_id', bank);
 
-// Mount API under /v1/default
-app.route('/v1/default', api);
+// Mount API under /v1/:tenant (e.g. /v1/default, /v1/acme, etc.)
+app.route('/v1/:tenant', api);
 
 // =============================================================================
 // Queue consumer (for async operations)
