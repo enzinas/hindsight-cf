@@ -170,7 +170,7 @@ Run the test suite:
 npm run test
 ```
 
-All 84 tests should pass, including the API compatibility suite that verifies all 47 original hindsight routes.
+All 100 tests should pass, including the API compatibility suite that verifies all 48 original hindsight routes.
 
 ### Step 10 — Deploy to production
 
@@ -206,9 +206,14 @@ Your hindsight-cf instance is now live on Cloudflare's edge network.
 
 ```sh
 npm run dev              # Start local dev server (http://localhost:8787)
-npm run test             # Run all 84 tests
+npm run test             # Run all 100 tests
 npm run test:watch       # Run tests in watch mode
 npm run typecheck        # TypeScript type checking
+npm run lint             # ESLint check
+npm run lint:fix         # ESLint auto-fix
+npm run format           # Prettier format
+npm run format:check     # Prettier check (CI-friendly)
+npm run check            # All-in-one: format + lint + typecheck + tests
 npm run db:migrate       # Apply migrations to local D1
 npm run db:migrate:remote # Apply migrations to production D1
 npm run deploy           # Deploy to Cloudflare Workers
@@ -248,171 +253,181 @@ Secrets are encrypted and only available to your Worker at runtime. They are nev
 
 ## API Reference
 
-This port targets 100% route compatibility with the original [hindsight API](https://github.com/vectorize-io/hindsight). All endpoints exist and respond, but some core pipelines are not yet implemented (marked below). See the [original hindsight documentation](https://github.com/vectorize-io/hindsight) for request/response schemas and usage details.
-
-**Legend:**  Implemented |  Stub (returns 501) |  Disabled
+This port targets 100% route and response-shape compatibility with the [original hindsight API](https://github.com/vectorize-io/hindsight). All core pipelines are implemented. See the [original hindsight documentation](https://github.com/vectorize-io/hindsight) for request/response schemas and usage details.
 
 ### Health & Monitoring
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `/health` | Health check |
-|  | GET | `/version` | Version info, feature flags, model config |
-|  | GET | `/metrics` | Metrics (placeholder — returns stub text) |
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Health check (`{"status":"ok"}`) |
+| GET | `/version` | Version info, feature flags, model config |
+| GET | `/metrics` | Metrics (Prometheus text or JSON `null` via `Accept` header) |
 
 ### Memory Operations
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | POST | `.../memories` | **Retain** — ingest new memories (Phase 2: needs fact extraction, embeddings, entity resolution) |
-|  | POST | `.../memories/recall` | **Recall** — retrieve memories by query (Phase 3: needs vector search, FTS5, reranking, fusion) |
-|  | POST | `.../memories/reflect` | **Reflect** — agentic reasoning over memories (Phase 4: needs LLM loop with tool use) |
-|  | GET | `.../memories/list` | List memory units (paginated, filterable by type) |
-|  | GET | `.../memories/{id}` | Get a single memory unit |
-|  | DELETE | `.../memories/{id}` | Delete a memory unit |
-|  | DELETE | `.../memories/{id}/observations` | Delete observations linked to a memory |
-|  | DELETE | `.../memories` | Clear all memories (optionally filtered by `?type=`) |
+| Method | Path | Description |
+|---|---|---|
+| POST | `.../memories` | **Retain** — ingest content, extract facts, generate embeddings, resolve entities |
+| POST | `.../memories/recall` | **Recall** — vector search + FTS5 + graph retrieval + reranking + fusion |
+| POST | `.../reflect` | **Reflect** — agentic LLM loop with tool use over memory |
+| GET | `.../memories/list` | List memory units (paginated, filterable by type) |
+| GET | `.../memories/{id}` | Get a single memory unit |
+| DELETE | `.../memories/{id}` | Delete a memory unit (+ Vectorize cleanup) |
+| DELETE | `.../memories/{id}/observations` | Delete observations linked to a memory |
+| DELETE | `.../memories` | Clear all memories (optionally filtered by `?type=`) |
 
 ### Banks
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `/v1/default/banks` | List all banks |
-|  | PUT | `.../banks/{bank_id}` | Update bank |
-|  | PATCH | `.../banks/{bank_id}` | Partial update bank |
-|  | DELETE | `.../banks/{bank_id}` | Delete bank |
-|  | GET | `.../banks/{bank_id}/profile` | Get bank profile |
-|  | PUT | `.../banks/{bank_id}/profile` | Update full profile (disposition + mission) |
-|  | PUT | `.../banks/{bank_id}/profile/disposition` | Update disposition traits |
-|  | PUT | `.../banks/{bank_id}/profile/mission` | Set mission |
-|  | POST | `.../banks/{bank_id}/background` | Merge background into mission |
-|  | GET | `.../banks/{bank_id}/stats` | Bank statistics |
-|  | GET | `.../banks/{bank_id}/config` | Get bank config |
-|  | PATCH | `.../banks/{bank_id}/config` | Update bank config |
-|  | DELETE | `.../banks/{bank_id}/config` | Reset config to defaults |
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/default/banks` | List all banks (returns full bank objects) |
+| PUT | `.../banks/{bank_id}` | Update bank (returns updated bank object) |
+| PATCH | `.../banks/{bank_id}` | Partial update bank (returns updated bank object) |
+| DELETE | `.../banks/{bank_id}` | Delete bank (+ Vectorize cleanup) |
+| GET | `.../banks/{bank_id}/profile` | Get bank profile |
+| PUT | `.../banks/{bank_id}/profile` | Update full profile (disposition + mission) |
+| PUT | `.../banks/{bank_id}/profile/disposition` | Update disposition traits |
+| PUT | `.../banks/{bank_id}/profile/mission` | Set mission |
+| POST | `.../banks/{bank_id}/background` | Merge background into mission |
+| GET | `.../banks/{bank_id}/stats` | Bank statistics |
+| GET | `.../banks/{bank_id}/config` | Get bank config (`{config, overrides}`) |
+| PATCH | `.../banks/{bank_id}/config` | Update config overrides (merge) |
+| DELETE | `.../banks/{bank_id}/config` | Reset config overrides to defaults |
 
 ### Entities
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `.../entities` | List entities (sorted by mention count) |
-|  | GET | `.../entities/{id}` | Get entity detail with observations |
-|  | POST | `.../entities/{id}/regenerate` | **Regenerate entity** (not yet implemented) |
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../entities` | List entities (sorted by mention count) |
+| GET | `.../entities/{id}` | Get entity detail with observations |
+| POST | `.../entities/{id}/regenerate` | Regenerate entity summary via LLM |
 
 ### Documents & Chunks
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `.../documents` | List documents |
-|  | GET | `.../documents/{id}` | Get document |
-|  | DELETE | `.../documents/{id}` | Delete document |
-|  | GET | `/v1/default/chunks/{id}` | Get chunk (top-level, not bank-scoped) |
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../documents` | List documents |
+| GET | `.../documents/{id}` | Get document |
+| DELETE | `.../documents/{id}` | Delete document (+ memory units + Vectorize cleanup) |
+| GET | `/v1/default/chunks/{id}` | Get chunk (top-level, not bank-scoped) |
 
 ### Directives
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `.../directives` | List directives |
-|  | POST | `.../directives` | Create directive |
-|  | GET | `.../directives/{id}` | Get directive |
-|  | PATCH | `.../directives/{id}` | Update directive |
-|  | DELETE | `.../directives/{id}` | Delete directive |
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../directives` | List directives |
+| POST | `.../directives` | Create directive |
+| GET | `.../directives/{id}` | Get directive |
+| PATCH | `.../directives/{id}` | Update directive |
+| DELETE | `.../directives/{id}` | Delete directive |
 
 ### Mental Models
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `.../mental-models` | List mental models |
-|  | POST | `.../mental-models` | Create mental model |
-|  | GET | `.../mental-models/{id}` | Get mental model |
-|  | PATCH | `.../mental-models/{id}` | Update mental model |
-|  | DELETE | `.../mental-models/{id}` | Delete mental model |
-|  | POST | `.../mental-models/{id}/refresh` | **Refresh mental model** (not yet implemented) |
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../mental-models` | List mental models |
+| POST | `.../mental-models` | Create mental model |
+| GET | `.../mental-models/{id}` | Get mental model |
+| PATCH | `.../mental-models/{id}` | Update mental model |
+| DELETE | `.../mental-models/{id}` | Delete mental model (+ Vectorize cleanup) |
+| POST | `.../mental-models/{id}/refresh` | Refresh mental model via LLM |
+
+### Consolidation & Observations
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `.../consolidate` | Trigger consolidation (cluster facts into observations via LLM) |
+| DELETE | `.../observations` | Clear all observations (+ Vectorize cleanup) |
 
 ### Operations
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `.../operations` | List async operations |
-|  | GET | `.../operations/{id}` | Get operation detail |
-|  | DELETE | `.../operations/{id}` | Cancel pending operation |
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../operations` | List async operations (filterable by status) |
+| GET | `.../operations/{id}` | Get operation detail |
+| DELETE | `.../operations/{id}` | Cancel pending operation |
 
 ### Other
 
-| | Method | Path | Description |
-|---|---|---|---|
-|  | GET | `.../graph` | Entity co-occurrence graph |
-|  | GET | `.../tags` | List all tags |
-|  | POST | `.../consolidate` | **Trigger consolidation** (not yet implemented) |
-|  | POST | `.../files/retain` | **File upload** (disabled — future release) |
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../graph` | Entity co-occurrence graph (`{nodes, edges, total_nodes, total_edges}`) |
+| GET | `.../tags` | List all tags |
+| POST | `.../files/retain` | File upload (disabled — future release) |
 
 > **Note:** Paths shown as `...` are relative to `/v1/default/banks/{bank_id}` unless otherwise noted.
-
-### Implementation Summary
-
-| Category | Implemented | Stub/Disabled | Total |
-|---|---|---|---|
-| Health & monitoring | 2 | 1 (metrics) | 3 |
-| Memory operations | 5 | 3 (retain, recall, reflect) | 8 |
-| Banks & profile | 13 | 0 | 13 |
-| Entities | 2 | 1 (regenerate) | 3 |
-| Documents & chunks | 4 | 0 | 4 |
-| Directives | 5 | 0 | 5 |
-| Mental models | 5 | 1 (refresh) | 6 |
-| Operations | 3 | 0 | 3 |
-| Graph, tags, consolidation, files | 2 | 2 (consolidate, files) | 4 |
-| **Total** | **41** | **8** | **49** |
-
-The 8 unimplemented endpoints are the core AI pipelines (retain, recall, reflect, consolidate, entity regeneration, mental model refresh), the metrics endpoint, and file upload. These are tracked in the implementation phases below.
 
 ## Project Structure
 
 ```
 hindsight-cf/
 ├── migrations/
-│   └── 0001_initial_schema.sql    # D1 schema (10 tables + FTS5)
+│   └── 0001_initial_schema.sql        # D1 schema (10 tables + FTS5)
 ├── src/
-│   ├── index.ts                   # Entry point, Hono app, queue consumer
-│   ├── env.ts                     # Cloudflare bindings type definition
-│   ├── types.ts                   # Shared request/response types
+│   ├── index.ts                       # Entry point, Hono app, queue consumer
+│   ├── env.ts                         # Cloudflare bindings type definition
+│   ├── types.ts                       # Shared request/response types
+│   ├── vectorize-utils.ts             # Batched Vectorize delete helper
+│   ├── engine/
+│   │   ├── consolidate/
+│   │   │   └── orchestrator.ts        # Semantic clustering + LLM synthesis
+│   │   ├── entity-regenerate.ts       # Entity summary regeneration
+│   │   ├── mental-model-refresh.ts    # Mental model refresh via LLM
+│   │   ├── recall/
+│   │   │   ├── orchestrator.ts        # Multi-signal recall pipeline
+│   │   │   ├── vector-search.ts       # Vectorize similarity search
+│   │   │   ├── fts-search.ts          # D1 FTS5 full-text search
+│   │   │   ├── graph-retrieval.ts     # Entity graph traversal
+│   │   │   ├── fusion.ts             # Result fusion (RRF)
+│   │   │   ├── reranking.ts           # Workers AI reranking
+│   │   │   └── types.ts
+│   │   ├── reflect/
+│   │   │   ├── agent.ts               # Agentic LLM loop
+│   │   │   ├── prompts.ts             # System prompts
+│   │   │   ├── tools-schema.ts        # Tool definitions for LLM
+│   │   │   ├── tools.ts               # Tool implementations
+│   │   │   └── types.ts
+│   │   └── retain/
+│   │       ├── orchestrator.ts        # Full retain pipeline
+│   │       ├── fact-extraction.ts     # LLM fact extraction
+│   │       ├── fact-storage.ts        # D1 + Vectorize storage
+│   │       ├── chunk-storage.ts       # Document chunking
+│   │       ├── deduplication.ts       # Semantic dedup
+│   │       ├── entity-processing.ts   # Entity resolution
+│   │       ├── link-creation.ts       # Temporal/semantic/causal links
+│   │       └── types.ts
+│   ├── providers/
+│   │   ├── embeddings.ts              # Workers AI embeddings
+│   │   ├── llm.ts                     # LLM provider (Workers AI / external)
+│   │   └── llm-tools.ts              # LLM with tool-use support
 │   └── routes/
-│       ├── health.ts              # /health, /version, /metrics
-│       ├── banks.ts               # Bank CRUD, profile, config
-│       ├── memories.ts            # Retain, recall, reflect, list/get/delete
-│       ├── entities.ts            # Entity list + detail
-│       ├── documents.ts           # Document + chunk CRUD
-│       ├── directives.ts          # Directive CRUD
-│       ├── mental-models.ts       # Mental model CRUD
-│       ├── operations.ts          # Async operation tracking
-│       ├── graph.ts               # Entity co-occurrence graph
-│       ├── tags.ts                # Tag listing
-│       ├── files.ts               # File upload (disabled)
-│       └── consolidation.ts       # On-demand consolidation
+│       ├── health.ts                  # /health, /version, /metrics
+│       ├── banks.ts                   # Bank CRUD, profile, config
+│       ├── memories.ts                # Retain, recall, list/get/delete
+│       ├── entities.ts                # Entity list + detail
+│       ├── documents.ts               # Document + chunk CRUD
+│       ├── directives.ts              # Directive CRUD
+│       ├── mental-models.ts           # Mental model CRUD
+│       ├── operations.ts              # Async operation tracking
+│       ├── graph.ts                   # Entity co-occurrence graph
+│       ├── tags.ts                    # Tag listing
+│       └── files.ts                   # File upload (disabled)
 ├── tests/
-│   ├── helpers.ts                 # In-memory D1 mock, test utilities
-│   ├── health.test.ts             # Health/version endpoint tests
-│   ├── banks.test.ts              # Bank CRUD tests
-│   ├── directives.test.ts         # Directive CRUD tests
-│   ├── memories.test.ts           # Memory operations tests
-│   └── api-compatibility.test.ts  # Verifies all 47 original hindsight routes exist
-├── wrangler.toml                  # Cloudflare Worker config
-├── vitest.config.ts               # Test configuration
+│   ├── helpers.ts                     # In-memory D1/Vectorize/AI mocks
+│   ├── health.test.ts                 # Health/version endpoint tests
+│   ├── banks.test.ts                  # Bank CRUD + config tests
+│   ├── directives.test.ts            # Directive CRUD tests
+│   ├── memories.test.ts               # Memory retain/recall/delete tests
+│   ├── integration.test.ts            # End-to-end retain → recall tests
+│   └── api-compatibility.test.ts      # Verifies all 48 original routes exist
+├── .prettierrc                        # Prettier config (120 width, single quotes)
+├── eslint.config.js                   # ESLint flat config (TS + Prettier)
+├── wrangler.toml                      # Cloudflare Worker config
+├── vitest.config.ts                   # Test configuration
 ├── package.json
 ├── tsconfig.json
-└── PLAN.md                        # Architecture and implementation plan
+└── PLAN.md                            # Architecture and implementation plan
 ```
-
-## Implementation Roadmap
-
-| Phase | Status | Description |
-|---|---|---|
-| Phase 1: Foundation | Done | Scaffolding, D1 schema, Hono router, all endpoint stubs |
-| Phase 2: Retain Pipeline | Planned | Fact extraction via LLM, embedding generation, entity resolution, D1/Vectorize storage |
-| Phase 3: Recall Pipeline | Planned | Vector search, FTS5 full-text search, graph retrieval, reranking, result fusion |
-| Phase 4: Reflect Pipeline | Planned | Agentic LLM loop with tool use, structured output |
-| Phase 5: Management APIs | Done | Banks, documents, entities, directives, mental models, tags, graph |
-| Phase 6: Async Operations | Planned | Queue-based async retain, operation tracking, consolidation scheduling |
-| Phase 7: Polish | Planned | Error handling, edge cases, metrics, file upload |
 
 ## Acknowledgments
 
