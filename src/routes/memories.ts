@@ -185,8 +185,8 @@ app.post('/recall', async (c) => {
 // GET /memories/list — list memory units
 app.get('/list', async (c) => {
   const bankId = c.req.param('bank_id');
-  const limit = parseInt(c.req.query('limit') || '100');
-  const offset = parseInt(c.req.query('offset') || '0');
+  const limit = Math.max(1, Math.min(parseInt(c.req.query('limit') || '100') || 100, 1000));
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0') || 0);
   const factType = c.req.query('type');
 
   let query = 'SELECT id, text, fact_type, context, event_date, created_at FROM memory_units WHERE bank_id = ?';
@@ -270,23 +270,30 @@ app.delete('/:memory_id/observations', async (c) => {
   const bankId = c.req.param('bank_id');
   const memoryId = c.req.param('memory_id');
 
+  // Use json_each to properly query the JSON array instead of fragile LIKE matching
   const rows = await c.env.DB.prepare(
-    "SELECT id FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)",
+    `SELECT mu.id FROM memory_units mu, json_each(mu.source_memory_ids) je
+     WHERE mu.bank_id = ? AND mu.fact_type = 'observation' AND je.value = ?`,
   )
-    .bind(bankId, `%${memoryId}%`)
+    .bind(bankId, memoryId)
     .all<{ id: string }>();
   const ids = rows.results.map((r) => r.id);
 
   // Delete vectors first (best-effort), then D1 rows
   await deleteVectorsBatched(c.env.VECTORIZE, ids);
 
-  const result = await c.env.DB.prepare(
-    "DELETE FROM memory_units WHERE bank_id = ? AND fact_type = 'observation' AND id IN (SELECT id FROM memory_units WHERE source_memory_ids LIKE ?)",
-  )
-    .bind(bankId, `%${memoryId}%`)
-    .run();
+  let deleteCount = 0;
+  if (ids.length > 0) {
+    const placeholders = ids.map(() => '?').join(', ');
+    const result = await c.env.DB.prepare(
+      `DELETE FROM memory_units WHERE id IN (${placeholders})`,
+    )
+      .bind(...ids)
+      .run();
+    deleteCount = result.meta.changes;
+  }
 
-  return c.json({ success: true, message: 'Deleted successfully', deleted_count: result.meta.changes });
+  return c.json({ success: true, message: 'Deleted successfully', deleted_count: deleteCount });
 });
 
 export { app as memoriesRoutes };

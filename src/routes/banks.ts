@@ -34,8 +34,12 @@ app.put('/profile', async (c) => {
 
   if (body.disposition) {
     const { skepticism, literalism, empathy } = body.disposition;
-    if ([skepticism, literalism, empathy].some((v) => v < 1 || v > 5)) {
-      return c.json({ error: 'validation_error', message: 'Disposition traits must be between 1 and 5' }, 400);
+    if (
+      [skepticism, literalism, empathy].some(
+        (v) => typeof v !== 'number' || !Number.isFinite(v) || v < 1 || v > 5,
+      )
+    ) {
+      return c.json({ error: 'validation_error', message: 'Disposition traits must be numbers between 1 and 5' }, 400);
     }
     await c.env.DB.prepare(
       "UPDATE banks SET disposition = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE bank_id = ?",
@@ -62,8 +66,12 @@ app.put('/profile/disposition', async (c) => {
   await ensureBank(c.env.DB, bankId);
 
   const { skepticism, literalism, empathy } = body.disposition;
-  if ([skepticism, literalism, empathy].some((v) => v < 1 || v > 5)) {
-    return c.json({ error: 'validation_error', message: 'Disposition traits must be between 1 and 5' }, 400);
+  if (
+    [skepticism, literalism, empathy].some(
+      (v) => typeof v !== 'number' || !Number.isFinite(v) || v < 1 || v > 5,
+    )
+  ) {
+    return c.json({ error: 'validation_error', message: 'Disposition traits must be numbers between 1 and 5' }, 400);
   }
 
   await c.env.DB.prepare(

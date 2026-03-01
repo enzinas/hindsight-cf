@@ -222,7 +222,7 @@ describe('POST /v1/default/banks/:bank_id/memories (retain)', () => {
     });
 
     // Entities should be created from LLM extraction
-    expect(store.tables.entities.length).toBeGreaterThanOrEqual(0);
+    expect(store.tables.entities.length).toBeGreaterThan(0);
   });
 });
 

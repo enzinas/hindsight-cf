@@ -10,8 +10,8 @@ const app = new Hono<{ Bindings: Env }>();
 // GET /mental-models — list mental models
 app.get('/', async (c) => {
   const bankId = c.req.param('bank_id');
-  const limit = parseInt(c.req.query('limit') || '100');
-  const offset = parseInt(c.req.query('offset') || '0');
+  const limit = Math.max(1, Math.min(parseInt(c.req.query('limit') || '100') || 100, 1000));
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0') || 0);
 
   const results = await c.env.DB.prepare(
     "SELECT id, text, context, proof_count, source_memory_ids, history, created_at, updated_at FROM memory_units WHERE bank_id = ? AND fact_type = 'mental_model' ORDER BY created_at DESC LIMIT ? OFFSET ?",
@@ -125,18 +125,25 @@ app.delete('/:model_id', async (c) => {
   const bankId = c.req.param('bank_id');
   const modelId = c.req.param('model_id');
 
-  const result = await c.env.DB.prepare(
+  // Check existence first
+  const exists = await c.env.DB.prepare(
+    "SELECT id FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'",
+  )
+    .bind(modelId, bankId)
+    .first();
+
+  if (!exists) {
+    return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);
+  }
+
+  // Delete vector first (best-effort), then D1 row
+  await deleteVectorsBatched(c.env.VECTORIZE, [modelId]);
+
+  await c.env.DB.prepare(
     "DELETE FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'",
   )
     .bind(modelId, bankId)
     .run();
-
-  if (result.meta.changes === 0) {
-    return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);
-  }
-
-  // Delete vector from Vectorize (best-effort)
-  await deleteVectorsBatched(c.env.VECTORIZE, [modelId]);
 
   return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });

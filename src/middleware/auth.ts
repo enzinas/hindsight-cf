@@ -88,11 +88,20 @@ export function bearerAuth() {
         );
       }
 
-      const row = await c.env.DB.prepare(
-        'SELECT tenant_id, expires_at FROM api_keys WHERE token = ?',
-      )
-        .bind(token)
-        .first<{ tenant_id: string; expires_at: string | null }>();
+      let row: { tenant_id: string; expires_at: string | null } | null = null;
+      try {
+        row = await c.env.DB.prepare(
+          'SELECT tenant_id, expires_at FROM api_keys WHERE token = ?',
+        )
+          .bind(token)
+          .first<{ tenant_id: string; expires_at: string | null }>();
+      } catch {
+        // D1 error (e.g. table missing) — reject token since we can't validate it
+        return c.json(
+          { error: 'internal_error', message: 'Unable to validate API key' },
+          500,
+        );
+      }
 
       if (!row) {
         return c.json(
@@ -124,16 +133,20 @@ export function bearerAuth() {
 
     // No Authorization header and no global key — check if multi-tenant
     // auth is active (any keys in D1). If so, require auth.
-    const keyCount = await c.env.DB.prepare(
-      'SELECT COUNT(*) as total FROM api_keys',
-    )
-      .first<{ total: number }>();
+    try {
+      const keyCount = await c.env.DB.prepare(
+        'SELECT COUNT(*) as total FROM api_keys',
+      )
+        .first<{ total: number }>();
 
-    if (keyCount && keyCount.total > 0) {
-      return c.json(
-        { error: 'unauthorized', message: 'Authorization header is required' },
-        401,
-      );
+      if (keyCount && keyCount.total > 0) {
+        return c.json(
+          { error: 'unauthorized', message: 'Authorization header is required' },
+          401,
+        );
+      }
+    } catch {
+      // If api_keys table doesn't exist or D1 fails, fall through to open mode
     }
 
     // ── Mode 3: Open access (no keys configured anywhere) ──────────────

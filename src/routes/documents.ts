@@ -10,8 +10,8 @@ const app = new Hono<{ Bindings: Env }>();
 // GET /documents — list documents
 app.get('/', async (c) => {
   const bankId = c.req.param('bank_id');
-  const limit = parseInt(c.req.query('limit') || '100');
-  const offset = parseInt(c.req.query('offset') || '0');
+  const limit = Math.max(1, Math.min(parseInt(c.req.query('limit') || '100') || 100, 1000));
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0') || 0);
 
   const results = await c.env.DB.prepare(
     'SELECT id, content_hash, metadata, created_at, updated_at FROM documents WHERE bank_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
@@ -99,16 +99,15 @@ app.delete('/:document_id', async (c) => {
 
 export { app as documentsRoutes };
 
-// Chunk route — mounted separately
+// Chunk route — mounted separately at /v1/:tenant/chunks (not under /banks/:bank_id)
 const chunkApp = new Hono<{ Bindings: Env }>();
 
-// GET /chunks/:chunk_id — get chunk
+// GET /chunks/:chunk_id — get chunk by ID (bank-agnostic)
 chunkApp.get('/:chunk_id', async (c) => {
-  const bankId = c.req.param('bank_id');
   const chunkId = c.req.param('chunk_id');
 
-  const chunk = await c.env.DB.prepare('SELECT * FROM chunks WHERE chunk_id = ? AND bank_id = ?')
-    .bind(chunkId, bankId)
+  const chunk = await c.env.DB.prepare('SELECT * FROM chunks WHERE chunk_id = ?')
+    .bind(chunkId)
     .first();
 
   if (!chunk) {

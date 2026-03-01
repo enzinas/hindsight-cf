@@ -48,7 +48,7 @@ app.onError((err, c) => {
   return c.json(
     {
       error: 'internal_error',
-      message: err.message || 'An unexpected error occurred',
+      message: 'An unexpected error occurred',
     },
     500,
   );

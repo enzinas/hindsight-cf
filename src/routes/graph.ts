@@ -9,7 +9,7 @@ const app = new Hono<{ Bindings: Env }>();
 // GET /graph — get graph data (entities + links)
 app.get('/', async (c) => {
   const bankId = c.req.param('bank_id');
-  const limit = parseInt(c.req.query('limit') || '50');
+  const limit = Math.max(1, Math.min(parseInt(c.req.query('limit') || '50') || 50, 500));
 
   // Get top entities by mention count
   const entities = await c.env.DB.prepare(
