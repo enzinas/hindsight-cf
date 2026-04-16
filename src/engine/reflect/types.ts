@@ -4,6 +4,8 @@
  * Ported from hindsight-api/engine/reflect/types.py.
  */
 
+import type { TagGroup } from '../../types';
+
 export interface ReflectConfig {
   query: string;
   bankId: string;
@@ -13,6 +15,7 @@ export interface ReflectConfig {
   responseSchema?: Record<string, unknown> | null;
   tags?: string[] | null;
   tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
+  tagGroups?: TagGroup[] | null;
   includeFacts?: boolean;
   includeToolCalls?: boolean;
   includeToolOutput?: boolean;

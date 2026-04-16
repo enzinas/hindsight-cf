@@ -88,8 +88,8 @@ app.delete('/:operation_id', async (c) => {
   return c.json({ success: true, message: 'Deleted successfully', deleted_count: 1 });
 });
 
-// POST /operations/:operation_id — retry a failed operation
-app.post('/:operation_id', async (c) => {
+// POST /operations/:operation_id/retry — retry a failed operation (upstream-compatible path)
+app.post('/:operation_id/retry', async (c) => {
   const bankId = c.req.param('bank_id');
   const operationId = c.req.param('operation_id');
 

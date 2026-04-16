@@ -148,7 +148,7 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
       const args = safeParseJSON(tc.function.arguments);
       const toolStart = Date.now();
 
-      const result = await executeTool(env, config.bankId, tc.function.name, args, config.tags, config.tagsMatch);
+      const result = await executeTool(env, config.bankId, tc.function.name, args, config.tags, config.tagsMatch, config.tagGroups);
 
       const toolDuration = Date.now() - toolStart;
 

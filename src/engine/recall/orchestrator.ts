@@ -66,11 +66,15 @@ export async function recall(env: Env, bankId: string, query: string, config: Re
       topK: maxResults * 2,
       factTypes: config.factTypes,
       tags: config.tags,
+      tagsMatch: config.tagsMatch,
+      tagGroups: config.tagGroups,
     }),
     ftsSearch(env, bankId, query, {
       limit: maxResults * 2,
       factTypes: config.factTypes,
       tags: config.tags,
+      tagsMatch: config.tagsMatch,
+      tagGroups: config.tagGroups,
     }),
     // Graph retrieval uses seed IDs from vector search
     // We run vector search first conceptually, but since we await all,
@@ -80,6 +84,8 @@ export async function recall(env: Env, bankId: string, query: string, config: Re
         topK: 10,
         factTypes: config.factTypes,
         tags: config.tags,
+        tagsMatch: config.tagsMatch,
+        tagGroups: config.tagGroups,
       });
       return graphRetrieval(
         env,
@@ -90,12 +96,16 @@ export async function recall(env: Env, bankId: string, query: string, config: Re
           maxResults: maxResults,
           factTypes: config.factTypes,
           tags: config.tags,
+          tagsMatch: config.tagsMatch,
+          tagGroups: config.tagGroups,
         },
       );
     })(),
     temporalRetrieval(env, bankId, queryTimestamp, {
       factTypes: config.factTypes,
       tags: config.tags,
+      tagsMatch: config.tagsMatch,
+      tagGroups: config.tagGroups,
     }),
   ]);
 

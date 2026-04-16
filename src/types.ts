@@ -13,6 +13,13 @@ export type OperationStatus = 'pending' | 'processing' | 'completed' | 'failed';
 export type Budget = 'low' | 'mid' | 'high';
 export type TagsMatch = 'any' | 'all' | 'any_strict' | 'all_strict';
 
+/** Recursive boolean tag filter — matches upstream hindsight TagGroup. */
+export type TagGroup =
+  | { tags: string[]; match?: TagsMatch }
+  | { and: TagGroup[] }
+  | { or: TagGroup[] }
+  | { not: TagGroup };
+
 // =============================================================================
 // Request Models
 // =============================================================================
@@ -47,6 +54,7 @@ export interface RecallRequest {
   };
   tags?: string[] | null;
   tags_match?: TagsMatch;
+  tag_groups?: TagGroup[] | null;
 }
 
 export interface ReflectRequest {
@@ -61,6 +69,7 @@ export interface ReflectRequest {
   response_schema?: Record<string, unknown> | null;
   tags?: string[] | null;
   tags_match?: TagsMatch;
+  tag_groups?: TagGroup[] | null;
 }
 
 // =============================================================================

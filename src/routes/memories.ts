@@ -178,6 +178,7 @@ app.post('/recall', async (c) => {
       factTypes: body.types as FactType[] | undefined,
       tags: body.tags ?? undefined,
       tagsMatch: body.tags_match,
+      tagGroups: body.tag_groups ?? undefined,
       queryTimestamp: body.query_timestamp,
       trace: body.trace ?? false,
       includeEntities: !!body.include?.entities,

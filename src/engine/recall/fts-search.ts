@@ -6,7 +6,8 @@
 
 import type { Env } from '../../env';
 import type { RetrievalResult } from './types';
-import type { FactType } from '../../types';
+import type { FactType, TagGroup } from '../../types';
+import { filterByTags } from '../tag-filter';
 
 /**
  * Search memories using FTS5 full-text search.
@@ -22,6 +23,8 @@ export async function ftsSearch(
     limit?: number;
     factTypes?: FactType[];
     tags?: string[];
+    tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
+    tagGroups?: TagGroup[];
   },
 ): Promise<RetrievalResult[]> {
   const limit = options?.limit ?? 50;
@@ -56,9 +59,9 @@ export async function ftsSearch(
       continue;
     }
 
-    if (options?.tags?.length) {
+    if (options?.tags?.length || options?.tagGroups?.length) {
       const rowTags = parseJsonArray(row.tags);
-      if (!matchesTags(rowTags, options.tags, 'any')) continue;
+      if (!filterByTags(rowTags, { tags: options?.tags, tagsMatch: options?.tagsMatch, tagGroups: options?.tagGroups })) continue;
     }
 
     // FTS5 rank is negative (more negative = more relevant)
@@ -136,11 +139,3 @@ function parseJsonObj(val: unknown): Record<string, string> {
   return (val as Record<string, string>) ?? {};
 }
 
-function matchesTags(rowTags: string[], filterTags: string[], mode: string): boolean {
-  if (!filterTags.length) return true;
-  if (!rowTags.length) return mode === 'any' || mode === 'all';
-  if (mode === 'any' || mode === 'any_strict') {
-    return filterTags.some((t) => rowTags.includes(t));
-  }
-  return filterTags.every((t) => rowTags.includes(t));
-}

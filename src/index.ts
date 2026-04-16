@@ -203,6 +203,7 @@ bank.post('/reflect', async (c) => {
       responseSchema: body.response_schema,
       tags: body.tags,
       tagsMatch: body.tags_match,
+      tagGroups: body.tag_groups,
       includeFacts: body.include?.facts !== undefined,
       includeToolCalls: body.include?.tool_calls !== undefined,
       includeToolOutput: body.include?.tool_calls?.output ?? false,

@@ -475,6 +475,8 @@ This port targets 100% route and response-shape compatibility with the [original
 | Method | Path | Description |
 |---|---|---|
 | GET | `/v1/bank-template-schema` | Get JSON Schema for bank template manifests (global, not tenant-scoped) |
+| GET | `.../export` | Export bank template (memories, entities, directives, documents) |
+| POST | `.../import` | Import bank template (supports `?dry_run=true` for validation-only) |
 
 ### Memory Operations
 
@@ -565,7 +567,7 @@ This port targets 100% route and response-shape compatibility with the [original
 |---|---|---|
 | GET | `.../operations` | List async operations (filterable by status) |
 | GET | `.../operations/{id}` | Get operation detail |
-| POST | `.../operations/{id}` | Retry a failed operation |
+| POST | `.../operations/{id}/retry` | Retry a failed operation |
 | DELETE | `.../operations/{id}` | Cancel pending operation |
 
 ### Webhooks
@@ -584,13 +586,6 @@ This port targets 100% route and response-shape compatibility with the [original
 |---|---|---|
 | GET | `.../audit-logs` | List audit logs (filterable by action, resource_type) |
 | GET | `.../audit-logs/stats` | Audit log aggregates by action and resource_type |
-
-### Export & Import
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `.../export` | Export bank data (memories, entities, directives, documents) |
-| POST | `.../import` | Import bank data (supports `dry_run`) |
 
 ### Stats
 

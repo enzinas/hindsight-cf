@@ -801,15 +801,15 @@ describe('Operations — retry', () => {
       task_payload: '{"items":[{"content":"retry me"}]}',
       retry_count: 0,
     });
-    const res = await assertRouteExists('POST', `${BANK_BASE}/operations/op-failed`);
+    const res = await assertRouteExists('POST', `${BANK_BASE}/operations/op-failed/retry`);
     expect(res.status).toBe(200);
     const data = res.body as Record<string, unknown>;
     expect(data).toHaveProperty('operation_id', 'op-failed');
     expect(data).toHaveProperty('operation_type', 'retain');
   });
 
-  it('POST /operations/:operation_id — rejects retry of non-failed operation', async () => {
-    const res = await assertRouteExists('POST', `${BANK_BASE}/operations/op-001`);
+  it('POST /operations/:operation_id/retry — rejects retry of non-failed operation', async () => {
+    const res = await assertRouteExists('POST', `${BANK_BASE}/operations/op-001/retry`);
     expect(res.status).toBe(409);
   });
 });

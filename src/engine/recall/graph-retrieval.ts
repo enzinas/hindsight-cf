@@ -9,7 +9,8 @@
 
 import type { Env } from '../../env';
 import type { RetrievalResult } from './types';
-import type { FactType } from '../../types';
+import type { FactType, TagGroup } from '../../types';
+import { filterByTags } from '../tag-filter';
 
 // Causal link types get a boost
 const LINK_BOOSTS: Record<string, number> = {
@@ -38,6 +39,8 @@ export async function graphRetrieval(
     minActivation?: number;
     factTypes?: FactType[];
     tags?: string[];
+    tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
+    tagGroups?: TagGroup[];
     decayRate?: number;
   },
 ): Promise<RetrievalResult[]> {
@@ -139,9 +142,9 @@ export async function graphRetrieval(
       continue;
     }
 
-    if (options?.tags?.length) {
+    if (options?.tags?.length || options?.tagGroups?.length) {
       const rowTags = parseJsonArray(row.tags);
-      if (!matchesTags(rowTags, options.tags, 'any')) continue;
+      if (!filterByTags(rowTags, { tags: options?.tags, tagsMatch: options?.tagsMatch, tagGroups: options?.tagGroups })) continue;
     }
 
     results.push({
@@ -180,6 +183,8 @@ export async function temporalRetrieval(
     limit?: number;
     factTypes?: FactType[];
     tags?: string[];
+    tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
+    tagGroups?: TagGroup[];
   },
 ): Promise<RetrievalResult[]> {
   const windowHours = options?.windowHours ?? 168; // 1 week default
@@ -209,9 +214,9 @@ export async function temporalRetrieval(
       continue;
     }
 
-    if (options?.tags?.length) {
+    if (options?.tags?.length || options?.tagGroups?.length) {
       const rowTags = parseJsonArray(row.tags);
-      if (!matchesTags(rowTags, options.tags, 'any')) continue;
+      if (!filterByTags(rowTags, { tags: options?.tags, tagsMatch: options?.tagsMatch, tagGroups: options?.tagGroups })) continue;
     }
 
     // Score based on temporal proximity
@@ -265,11 +270,3 @@ function parseJsonObj(val: unknown): Record<string, string> {
   return (val as Record<string, string>) ?? {};
 }
 
-function matchesTags(rowTags: string[], filterTags: string[], mode: string): boolean {
-  if (!filterTags.length) return true;
-  if (!rowTags.length) return mode === 'any' || mode === 'all';
-  if (mode === 'any' || mode === 'any_strict') {
-    return filterTags.some((t) => rowTags.includes(t));
-  }
-  return filterTags.every((t) => rowTags.includes(t));
-}

@@ -4,7 +4,7 @@
  * Ported from hindsight-api/engine/search/types.py.
  */
 
-import type { FactType } from '../../types';
+import type { FactType, TagGroup } from '../../types';
 
 /** Raw result from a single retrieval method. */
 export interface RetrievalResult {
@@ -67,6 +67,7 @@ export interface RecallConfig {
   factTypes?: FactType[];
   tags?: string[];
   tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
+  tagGroups?: TagGroup[];
   includeEntities?: boolean;
   includeChunks?: boolean;
   includeSourceFacts?: boolean;

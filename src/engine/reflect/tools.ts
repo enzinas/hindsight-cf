@@ -8,7 +8,7 @@
  */
 
 import type { Env } from '../../env';
-import type { FactType } from '../../types';
+import type { FactType, TagGroup } from '../../types';
 import { recall as recallPipeline } from '../recall/orchestrator';
 import { vectorSearch } from '../recall/vector-search';
 import { BUDGET_LIMITS } from '../recall/types';
@@ -38,14 +38,15 @@ export async function executeTool(
   args: Record<string, unknown>,
   tags?: string[] | null,
   tagsMatch?: string,
+  tagGroups?: TagGroup[] | null,
 ): Promise<ToolResult> {
   switch (toolName) {
     case 'search_mental_models':
-      return executeSearchMentalModels(env, bankId, args, tags);
+      return executeSearchMentalModels(env, bankId, args, tags, tagGroups);
     case 'search_observations':
-      return executeSearchObservations(env, bankId, args, tags);
+      return executeSearchObservations(env, bankId, args, tags, tagGroups);
     case 'recall':
-      return executeRecall(env, bankId, args, tags, tagsMatch);
+      return executeRecall(env, bankId, args, tags, tagsMatch, tagGroups);
     case 'expand':
       return executeExpand(env, bankId, args);
     case 'done':
@@ -68,6 +69,7 @@ async function executeSearchMentalModels(
   bankId: string,
   args: Record<string, unknown>,
   tags?: string[] | null,
+  tagGroups?: TagGroup[] | null,
 ): Promise<ToolResult> {
   const query = String(args.query ?? '');
   const maxResults = Number(args.max_results ?? 5);
@@ -77,6 +79,7 @@ async function executeSearchMentalModels(
     topK: maxResults,
     factTypes: ['mental_model'] as FactType[],
     tags: tags ?? undefined,
+    tagGroups: tagGroups ?? undefined,
   });
 
   const mentalModelIds = results.map((r) => r.id);
@@ -103,6 +106,7 @@ async function executeSearchObservations(
   bankId: string,
   args: Record<string, unknown>,
   tags?: string[] | null,
+  tagGroups?: TagGroup[] | null,
 ): Promise<ToolResult> {
   const query = String(args.query ?? '');
 
@@ -111,6 +115,7 @@ async function executeSearchObservations(
     topK: 20,
     factTypes: ['observation'] as FactType[],
     tags: tags ?? undefined,
+    tagGroups: tagGroups ?? undefined,
   });
 
   const observationIds = results.map((r) => r.id);
@@ -138,6 +143,7 @@ async function executeRecall(
   args: Record<string, unknown>,
   tags?: string[] | null,
   tagsMatch?: string,
+  tagGroups?: TagGroup[] | null,
 ): Promise<ToolResult> {
   const query = String(args.query ?? '');
   const budget = 'mid';
@@ -147,6 +153,7 @@ async function executeRecall(
     factTypes: ['world', 'experience', 'opinion'] as FactType[],
     tags: tags ?? undefined,
     tagsMatch: (tagsMatch as 'any' | 'all') ?? undefined,
+    tagGroups: tagGroups ?? undefined,
     trace: false,
   });
 

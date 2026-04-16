@@ -7,7 +7,8 @@
 import type { Env } from '../../env';
 import { generateEmbedding } from '../../providers/embeddings';
 import type { RetrievalResult } from './types';
-import type { FactType } from '../../types';
+import type { FactType, TagGroup } from '../../types';
+import { filterByTags } from '../tag-filter';
 
 /**
  * Search for similar memories using vector similarity.
@@ -24,6 +25,8 @@ export async function vectorSearch(
     topK?: number;
     factTypes?: FactType[];
     tags?: string[];
+    tagsMatch?: 'any' | 'all' | 'any_strict' | 'all_strict';
+    tagGroups?: TagGroup[];
   },
 ): Promise<RetrievalResult[]> {
   const topK = options?.topK ?? 50;
@@ -64,10 +67,10 @@ export async function vectorSearch(
       continue;
     }
 
-    // Filter by tags
-    if (options?.tags?.length) {
+    // Filter by tags and tag_groups
+    if (options?.tags?.length || options?.tagGroups?.length) {
       const rowTags: string[] = parseJsonArray(row.tags);
-      if (!matchesTags(rowTags, options.tags, 'any')) continue;
+      if (!filterByTags(rowTags, { tags: options?.tags, tagsMatch: options?.tagsMatch, tagGroups: options?.tagGroups })) continue;
     }
 
     results.push({
@@ -118,12 +121,3 @@ function parseJsonObj(val: unknown): Record<string, string> {
   return (val as Record<string, string>) ?? {};
 }
 
-function matchesTags(rowTags: string[], filterTags: string[], mode: string): boolean {
-  if (!filterTags.length) return true;
-  if (!rowTags.length) return mode === 'any' || mode === 'all'; // non-strict includes untagged
-  if (mode === 'any' || mode === 'any_strict') {
-    return filterTags.some((t) => rowTags.includes(t));
-  }
-  // all / all_strict
-  return filterTags.every((t) => rowTags.includes(t));
-}
