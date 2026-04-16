@@ -892,7 +892,7 @@ describe('Consolidation & Observations — implemented', () => {
 });
 
 describe('Consolidation & Observations — additional routes', () => {
-  it('POST /consolidation-recover — recover stuck consolidation ops', async () => {
+  it('POST /consolidation/recover — recover stuck consolidation ops', async () => {
     // Add a stuck consolidation operation
     store.tables.async_operations.push({
       operation_id: 'op-stuck',
@@ -905,7 +905,7 @@ describe('Consolidation & Observations — additional routes', () => {
       error_message: null,
       result_metadata: '{}',
     });
-    const res = await assertRouteExists('POST', `${BANK_BASE}/consolidation-recover`);
+    const res = await assertRouteExists('POST', `${BANK_BASE}/consolidation/recover`);
     expect(res.status).toBe(200);
     const data = res.body as Record<string, unknown>;
     expect(data).toHaveProperty('success', true);
@@ -1281,7 +1281,7 @@ describe('API parity summary', () => {
 
       // Consolidation & Observations
       'POST /banks/:id/consolidate': 'implemented',
-      'POST /banks/:id/consolidation-recover': 'implemented',
+      'POST /banks/:id/consolidation/recover': 'implemented',
       'GET /banks/:id/observations': 'implemented',
       'DELETE /banks/:id/observations': 'implemented',
       'GET /banks/:id/observations/:mid': 'implemented',

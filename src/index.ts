@@ -471,8 +471,8 @@ bank.post('/background', async (c) => {
   return c.json({ success: true, mission: newMission });
 });
 
-// POST /consolidation-recover — recover from failed/stuck consolidation operations
-bank.post('/consolidation-recover', async (c) => {
+// POST /consolidation/recover — recover from failed/stuck consolidation operations
+bank.post('/consolidation/recover', async (c) => {
   const bankId = c.req.param('bank_id')!;
 
   // Find stuck operations (processing for too long or failed consolidations)

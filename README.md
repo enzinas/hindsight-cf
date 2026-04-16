@@ -602,7 +602,7 @@ When both `tags` and `tag_groups` are provided, both must pass (AND). Multiple t
 | GET | `.../observations` | List observations |
 | GET | `.../observations/{model_id}` | Get observations linked to a mental model |
 | DELETE | `.../observations` | Clear all observations (+ Vectorize cleanup) |
-| POST | `.../consolidation-recover` | Reset stuck consolidation operations to failed |
+| POST | `.../consolidation/recover` | Reset stuck consolidation operations to failed |
 
 ### Operations
 
