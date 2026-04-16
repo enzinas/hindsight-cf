@@ -4,7 +4,11 @@ A TypeScript port of [**hindsight**](https://github.com/vectorize-io/hindsight) 
 
 [Hindsight](https://github.com/vectorize-io/hindsight) is an open-source AI agent memory system created by [Vectorize](https://vectorize.io). It gives LLM agents persistent, structured memory — enabling them to retain facts, recall relevant context, and reflect over accumulated knowledge. This port brings hindsight's full API to Cloudflare's edge infrastructure, replacing the original Python/FastAPI/PostgreSQL stack with TypeScript, Hono, D1, Vectorize, and Workers AI.
 
-For full details on hindsight's memory model, architecture, and concepts (memory banks, disposition traits, directives, mental models, entity graphs, etc.), see the [original hindsight repository](https://github.com/vectorize-io/hindsight).
+This port targets API compatibility with **hindsight v0.5.2**. For full details on hindsight's memory model, architecture, and concepts (memory banks, disposition traits, directives, mental models, entity graphs, etc.), see the [original hindsight repository](https://github.com/vectorize-io/hindsight).
+
+### Known limitations
+
+- **File upload** (`POST .../files/retain`) is not supported in this version. The endpoint exists but returns a `501` error. File-based retention requires multipart upload handling and document processing pipelines that are not yet ported to the Cloudflare Workers runtime. Use the standard `POST .../memories` retain endpoint instead.
 
 ## Architecture
 
@@ -642,7 +646,7 @@ When both `tags` and `tag_groups` are provided, both must pass (AND). Multiple t
 |---|---|---|
 | GET | `.../graph` | Entity co-occurrence graph (`{nodes, edges, total_nodes, total_edges}`) |
 | GET | `.../tags` | List all tags |
-| POST | `.../files/retain` | File upload (disabled — future release) |
+| POST | `.../files/retain` | File upload (not implemented — returns 501; use `POST .../memories` instead) |
 
 > **Note:** Paths shown as `...` are relative to `/v1/{tenant}/banks/{bank_id}` unless otherwise noted. The `{tenant}` segment defaults to `default` for single-tenant deployments.
 

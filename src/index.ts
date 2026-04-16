@@ -493,9 +493,7 @@ bank.post('/consolidation/recover', async (c) => {
   }
 
   return c.json({
-    success: true,
-    recovered_count: recovered,
-    operation_ids: stuck.results.map((op: Record<string, unknown>) => op.operation_id),
+    retried_count: recovered,
   });
 });
 

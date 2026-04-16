@@ -804,8 +804,11 @@ describe('Operations — retry', () => {
     const res = await assertRouteExists('POST', `${BANK_BASE}/operations/op-failed/retry`);
     expect(res.status).toBe(200);
     const data = res.body as Record<string, unknown>;
+    expect(data).toHaveProperty('success', true);
+    expect(data).toHaveProperty('message');
     expect(data).toHaveProperty('operation_id', 'op-failed');
-    expect(data).toHaveProperty('operation_type', 'retain');
+    expect(typeof data.message).toBe('string');
+    expect(data.message).toContain('op-failed');
   });
 
   it('POST /operations/:operation_id/retry — rejects retry of non-failed operation', async () => {
@@ -844,22 +847,17 @@ describe('Graph & Tags — implemented', () => {
 // SECTION 13: Files
 // =========================================================================
 
-describe('Files — partially implemented', () => {
+describe('Files — not implemented', () => {
   // Original: POST /api/files/retain
   // CF restructured to: POST /v1/:tenant/banks/:bank_id/files/retain
-  // Currently returns 404 with "feature_disabled" — route exists but feature is gated
-  it('POST /files/retain — route exists (feature disabled)', async () => {
+  // Returns 501 Not Implemented — route exists but file upload is not ported to CF
+  it('POST /files/retain — route exists, returns 501 not implemented', async () => {
     const url = `http://localhost${BANK_BASE}/files/retain`;
     const response = await testApp.fetch(new Request(url, { method: 'POST' }));
-    // Accept either a working response or a handler-level 404 (feature disabled)
-    // but NOT a router-level 404
-    if (response.status === 404) {
-      const body = await response.json() as Record<string, unknown>;
-      // If it returns JSON with "feature_disabled", the route exists
-      expect(body).toHaveProperty('error', 'feature_disabled');
-    } else {
-      expect(response.status).toBeLessThan(500);
-    }
+    expect(response.status).toBe(501);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body).toHaveProperty('error', 'not_implemented');
+    expect(body).toHaveProperty('message');
   });
 });
 
@@ -908,9 +906,11 @@ describe('Consolidation & Observations — additional routes', () => {
     const res = await assertRouteExists('POST', `${BANK_BASE}/consolidation/recover`);
     expect(res.status).toBe(200);
     const data = res.body as Record<string, unknown>;
-    expect(data).toHaveProperty('success', true);
-    expect(data).toHaveProperty('recovered_count');
-    expect((data.recovered_count as number)).toBeGreaterThanOrEqual(1);
+    expect(data).toHaveProperty('retried_count');
+    expect((data.retried_count as number)).toBeGreaterThanOrEqual(1);
+    // Upstream response has only retried_count — no success or operation_ids fields
+    expect(data).not.toHaveProperty('success');
+    expect(data).not.toHaveProperty('operation_ids');
   });
 
   it('GET /observations — list all observations', async () => {

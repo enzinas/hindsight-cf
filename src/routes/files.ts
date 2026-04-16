@@ -1,20 +1,26 @@
 /**
- * File upload endpoint — disabled in v1 (feature flag off).
- * Matches original behavior when HINDSIGHT_API_ENABLE_FILE_UPLOAD_API is off.
+ * File upload endpoint — not yet ported to Cloudflare Workers.
+ *
+ * Upstream hindsight supports POST /files/retain for multipart file upload
+ * with automatic chunking, fact extraction, and embedding. This requires
+ * document processing pipelines (PDF parsing, chunking strategies, etc.)
+ * that are not yet implemented in the CF runtime.
+ *
+ * Returns 501 Not Implemented with an upstream-compatible error shape.
  */
 import { Hono } from 'hono';
 import type { Env } from '../env';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// POST /files/retain — file upload (disabled in v1)
+// POST /files/retain — file upload (not implemented in CF port)
 app.post('/retain', (c) => {
   return c.json(
     {
-      error: 'feature_disabled',
-      message: 'File upload is not enabled. This feature will be available in a future release.',
+      error: 'not_implemented',
+      message: 'File upload is not supported in hindsight-cf. Use POST /memories for text-based retention.',
     },
-    404,
+    501,
   );
 });
 

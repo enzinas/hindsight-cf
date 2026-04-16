@@ -122,11 +122,11 @@ app.post('/:operation_id/retry', async (c) => {
     task_payload: taskPayload,
   });
 
-  const updated = await c.env.DB.prepare('SELECT * FROM async_operations WHERE operation_id = ?')
-    .bind(operationId)
-    .first();
-
-  return c.json(formatOperation(updated as Record<string, unknown>));
+  return c.json({
+    success: true,
+    message: `Operation ${operationId} queued for retry`,
+    operation_id: operationId,
+  });
 });
 
 function formatOperation(row: Record<string, unknown>) {
