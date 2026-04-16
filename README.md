@@ -492,6 +492,49 @@ This port targets 100% route and response-shape compatibility with the [original
 | DELETE | `.../memories/{id}/observations` | Delete observations linked to a memory |
 | DELETE | `.../memories` | Clear all memories (optionally filtered by `?type=`) |
 
+#### Tag Filtering
+
+Both **Recall** and **Reflect** endpoints support two tag filtering mechanisms:
+
+**Flat tags** — simple array + match mode:
+
+```json
+{
+  "query": "project status",
+  "tags": ["frontend", "backend"],
+  "tags_match": "any"
+}
+```
+
+`tags_match` values: `any` (OR, includes untagged), `all` (AND, includes untagged), `any_strict` (OR, excludes untagged), `all_strict` (AND, excludes untagged).
+
+**Tag groups** — recursive boolean expressions (AND / OR / NOT):
+
+```json
+{
+  "query": "project status",
+  "tag_groups": [
+    {
+      "and": [
+        { "tags": ["frontend"], "match": "any" },
+        { "not": { "tags": ["deprecated"] } }
+      ]
+    }
+  ]
+}
+```
+
+Tag groups support arbitrary nesting:
+
+| Operator | Shape | Semantics |
+|---|---|---|
+| Leaf | `{ "tags": [...], "match": "any" }` | Flat tag match |
+| AND | `{ "and": [TagGroup, ...] }` | All children must match |
+| OR | `{ "or": [TagGroup, ...] }` | Any child must match |
+| NOT | `{ "not": TagGroup }` | Child must NOT match |
+
+When both `tags` and `tag_groups` are provided, both must pass (AND). Multiple top-level tag groups are also combined with AND.
+
 ### Banks
 
 | Method | Path | Description |
