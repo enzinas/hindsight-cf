@@ -70,14 +70,33 @@ async function callWorkersAI(
     temperature: options?.temperature ?? 0.1,
   });
 
-  // Workers AI returns { response: string } for text generation
-  const response = (result as { response?: string }).response ?? '';
+  // Workers AI models return one of two formats:
+  // 1. Simple: { response: string } (older models like Llama)
+  // 2. OpenAI-compatible: { choices: [{ message: { content, reasoning_content } }], usage } (Qwen3, etc.)
+  const resultObj = result as Record<string, unknown>;
+  let response: string;
+  let inputTokens = 0;
+  let outputTokens = 0;
 
-  // Workers AI doesn't always return token counts
+  if (resultObj.choices && Array.isArray(resultObj.choices)) {
+    // OpenAI-compatible format (Qwen3, etc.)
+    const choices = resultObj.choices as Array<{ message: { content: string } }>;
+    response = choices[0]?.message?.content ?? '';
+    const usage = resultObj.usage as { prompt_tokens?: number; completion_tokens?: number } | undefined;
+    inputTokens = usage?.prompt_tokens ?? 0;
+    outputTokens = usage?.completion_tokens ?? 0;
+  } else {
+    // Simple { response: string } format
+    response = (resultObj.response as string) ?? '';
+  }
+
+  // Strip any <think>...</think> blocks that may appear inline
+  response = stripThinkingTags(response);
+
   return {
     content: response,
-    inputTokens: 0,
-    outputTokens: 0,
+    inputTokens,
+    outputTokens,
   };
 }
 
@@ -120,6 +139,15 @@ async function callExternalLLM(
     inputTokens: json.usage?.prompt_tokens ?? 0,
     outputTokens: json.usage?.completion_tokens ?? 0,
   };
+}
+
+/**
+ * Strip <think>...</think> blocks from model responses.
+ * Qwen3 and similar "thinking" models emit reasoning in these tags
+ * before the actual answer. We discard the thinking content.
+ */
+function stripThinkingTags(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
 /**

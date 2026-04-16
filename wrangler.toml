@@ -7,10 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "hindsight-db"
-database_id = "TODO-replace-with-actual-id"
+database_id = "b57b311a-9236-48a7-a33f-e0663919c614"
 migrations_dir = "migrations"
 
-# Vectorize Index (768 dims for bge-base-en-v1.5)
+# Vectorize Index (1024 dims for bge-m3)
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "hindsight-vectors"
@@ -36,10 +36,15 @@ max_batch_size = 1
 max_retries = 3
 dead_letter_queue = "hindsight-jobs-dlq"
 
+# Analytics Engine (metrics collection — writes are free, reads need CF_API_TOKEN)
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "hindsight_metrics"
+
 # Environment variables
 [vars]
 HINDSIGHT_VERSION = "0.1.0"
-DEFAULT_LLM_MODEL = "@cf/meta/llama-3.1-70b-instruct"
-DEFAULT_EMBEDDING_MODEL = "@cf/baai/bge-base-en-v1.5"
+DEFAULT_LLM_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8"
+DEFAULT_EMBEDDING_MODEL = "@cf/baai/bge-m3"
 DEFAULT_RERANKER_MODEL = "@cf/baai/bge-reranker-base"
-EMBEDDING_DIMENSIONS = "768"
+EMBEDDING_DIMENSIONS = "1024"

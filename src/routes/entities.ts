@@ -9,8 +9,8 @@ const app = new Hono<{ Bindings: Env }>();
 // GET /entities — list entities
 app.get('/', async (c) => {
   const bankId = c.req.param('bank_id');
-  const limit = parseInt(c.req.query('limit') || '100');
-  const offset = parseInt(c.req.query('offset') || '0');
+  const limit = Math.max(1, Math.min(parseInt(c.req.query('limit') || '100') || 100, 1000));
+  const offset = Math.max(0, parseInt(c.req.query('offset') || '0') || 0);
 
   const results = await c.env.DB.prepare(
     'SELECT id, canonical_name, mention_count, first_seen, last_seen, metadata FROM entities WHERE bank_id = ? ORDER BY mention_count DESC LIMIT ? OFFSET ?',

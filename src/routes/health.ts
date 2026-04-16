@@ -1,8 +1,9 @@
 /**
- * Health and version endpoints.
+ * Health, version, and metrics endpoints.
  */
 import { Hono } from 'hono';
 import type { Env } from '../env';
+import { getMetricsSummary } from '../metrics';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -27,16 +28,9 @@ app.get('/version', (c) => {
   });
 });
 
-app.get('/metrics', (c) => {
-  // Support Accept: application/json for generated clients that assume JSON
-  const accept = c.req.header('accept') || '';
-  if (accept.includes('application/json')) {
-    return c.json(null);
-  }
-  // Default: Prometheus text format
-  return c.text('# hindsight-cf metrics stub\n', 200, {
-    'Content-Type': 'text/plain',
-  });
+app.get('/metrics', async (c) => {
+  const summary = await getMetricsSummary(c.env);
+  return c.json(summary);
 });
 
 export { app as healthRoutes };

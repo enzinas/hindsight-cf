@@ -15,7 +15,7 @@ For full details on hindsight's memory model, architecture, and concepts (memory
 | Relational storage | PostgreSQL | **D1** (SQLite at the edge) |
 | Vector search | pgvector | **Vectorize** |
 | Full-text search | PostgreSQL tsvector | **D1 FTS5** |
-| Embeddings | External API | **Workers AI** (`@cf/baai/bge-base-en-v1.5`) |
+| Embeddings | External API | **Workers AI** (`@cf/baai/bge-m3`) |
 | Reranking | External API | **Workers AI** (`@cf/baai/bge-reranker-base`) |
 | LLM | External API | **Workers AI** (default) or external API |
 | Object storage | Local / S3 | **R2** |
@@ -96,8 +96,8 @@ database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   <-- copy this
 Now create the remaining resources:
 
 ```sh
-# Create the Vectorize index (768 dimensions for bge-base-en-v1.5, cosine similarity)
-npx wrangler vectorize create hindsight-vectors --dimensions=768 --metric=cosine
+# Create the Vectorize index (1024 dimensions for bge-m3, cosine similarity)
+npx wrangler vectorize create hindsight-vectors --dimensions=1024 --metric=cosine
 
 # Create the R2 storage bucket
 npx wrangler r2 bucket create hindsight-files
@@ -130,7 +130,7 @@ database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"   # your actual ID
 
 ### Step 8 — Run database migrations
 
-Apply the schema to your D1 database. This creates the tables (including the `api_keys` table for multi-tenant auth), FTS5 virtual table, and triggers.
+Apply the schema to your D1 database. This runs three migrations: the initial schema (tables, FTS5, triggers), the `api_keys` table for multi-tenant auth, and the webhooks/audit-logs tables.
 
 ```sh
 # For local development
@@ -170,7 +170,7 @@ Run the test suite:
 npm run test
 ```
 
-All tests should pass, including the API compatibility suite that verifies all 48 original hindsight routes.
+All 158 tests should pass, including the API compatibility suite that verifies route parity with the original hindsight API.
 
 ### Step 10 — Deploy to production
 
@@ -206,7 +206,7 @@ Your hindsight-cf instance is now live on Cloudflare's edge network.
 
 ```sh
 npm run dev              # Start local dev server (http://localhost:8787)
-npm run test             # Run all 100 tests
+npm run test             # Run all 158 tests
 npm run test:watch       # Run tests in watch mode
 npm run typecheck        # TypeScript type checking
 npm run lint             # ESLint check
@@ -232,10 +232,10 @@ These are set in `wrangler.toml` and can be changed before deploying:
 | Variable | Default | Description |
 |---|---|---|
 | `HINDSIGHT_VERSION` | `0.1.0` | Reported version |
-| `DEFAULT_LLM_MODEL` | `@cf/meta/llama-3.1-70b-instruct` | Workers AI model for reflect/retain |
-| `DEFAULT_EMBEDDING_MODEL` | `@cf/baai/bge-base-en-v1.5` | Workers AI embedding model (768 dims) |
+| `DEFAULT_LLM_MODEL` | `@cf/qwen/qwen3-30b-a3b-fp8` | Workers AI model for reflect/retain (function calling, reasoning) |
+| `DEFAULT_EMBEDDING_MODEL` | `@cf/baai/bge-m3` | Workers AI embedding model (1024 dims, multilingual) |
 | `DEFAULT_RERANKER_MODEL` | `@cf/baai/bge-reranker-base` | Workers AI reranker model |
-| `EMBEDDING_DIMENSIONS` | `768` | Embedding vector dimensions |
+| `EMBEDDING_DIMENSIONS` | `1024` | Embedding vector dimensions |
 
 ### Secrets
 
@@ -244,6 +244,11 @@ These are set in `wrangler.toml` and can be changed before deploying:
 
 # Auth — single global API key (see Authentication section below)
 npx wrangler secret put HINDSIGHT_API_KEY
+
+# Optional — metrics: enable Analytics Engine queries for GET /metrics
+# (see Metrics section below)
+npx wrangler secret put CF_ACCOUNT_ID
+npx wrangler secret put CF_API_TOKEN
 
 # Optional — external LLM providers (OpenAI, Anthropic, etc.)
 npx wrangler secret put OPENAI_API_KEY
@@ -353,6 +358,106 @@ from hindsight import Hindsight
 client = Hindsight(base_url="https://your-worker.workers.dev", api_key="sk-acme-secret-token")
 ```
 
+### Production recommendation: one deployment per tenant
+
+The original hindsight uses PostgreSQL schemas for hard database-level tenant isolation. hindsight-cf runs on D1 (SQLite), which doesn't support schemas — tenant isolation relies on `WHERE bank_id = ?` filtering in every query rather than a database-level boundary.
+
+For production multi-tenant use, **deploy a separate Worker and D1 database per tenant** instead of using the multi-tenant key table. Cloudflare Workers are cheap to deploy and each gets its own D1 database, Vectorize index, and R2 bucket — providing true infrastructure-level isolation with no risk of cross-tenant data leakage. Use Mode 2 (single key) to secure each deployment.
+
+```
+hindsight-acme.your-domain.workers.dev    → acme's D1, Vectorize, R2
+hindsight-beta.your-domain.workers.dev    → beta's D1, Vectorize, R2
+hindsight-gamma.your-domain.workers.dev   → gamma's D1, Vectorize, R2
+```
+
+Mode 3 (multi-tenant keys) is suitable for development, internal tools, or scenarios where tenants share a trust boundary.
+
+## Metrics & Observability
+
+hindsight-cf uses [Cloudflare Analytics Engine](https://developers.cloudflare.com/analytics/analytics-engine/) for metrics collection. Every HTTP request and core operation (retain, recall, reflect, consolidate) is automatically instrumented.
+
+**Write path** (automatic, zero-cost): Data points are written to Analytics Engine via the `ANALYTICS` binding on every request. This is fire-and-forget — no `await`, no latency impact. If the binding is missing, writes are silently skipped.
+
+**Read path** (`GET /metrics`): Returns a JSON summary. If `CF_ACCOUNT_ID` and `CF_API_TOKEN` secrets are configured, the response includes Analytics Engine data (HTTP request counts, operation durations, LLM token usage) for the last 24 hours. D1 resource counts (banks, memories, entities, documents) are always included regardless of configuration.
+
+### Setup (optional — metrics work without this, but /metrics returns only D1 counts)
+
+The Analytics Engine dataset (`hindsight_metrics`) is created automatically on first deploy — no `wrangler` command needed. To enable the full `GET /metrics` response with operational data:
+
+1. Create a Cloudflare API token at [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) with **Account Analytics:Read** permission.
+2. Find your Account ID in the Cloudflare dashboard sidebar (any zone overview page).
+3. Set both as secrets:
+
+```sh
+npx wrangler secret put CF_ACCOUNT_ID
+npx wrangler secret put CF_API_TOKEN
+```
+
+### Example response
+
+Without Analytics Engine secrets (D1 counts only):
+
+```json
+{
+  "analytics_engine": false,
+  "period": "n/a",
+  "http": null,
+  "operations": null,
+  "llm": null,
+  "d1": {
+    "banks": 3,
+    "memory_units": 1247,
+    "entities": 89,
+    "documents": 12,
+    "async_operations": 5
+  }
+}
+```
+
+With Analytics Engine secrets configured:
+
+```json
+{
+  "analytics_engine": true,
+  "period": "last 24 hours",
+  "http": {
+    "total_requests": 4821,
+    "by_method": { "GET": 3102, "POST": 1580, "DELETE": 139 },
+    "by_status": { "200": 4650, "404": 98, "500": 73 },
+    "avg_duration_ms": 42
+  },
+  "operations": {
+    "total": 312,
+    "by_type": { "retain": 201, "recall": 89, "reflect": 15, "consolidate": 7 },
+    "by_status": { "success": 298, "error": 14 },
+    "avg_duration_ms": 1850
+  },
+  "llm": {
+    "total_calls": 523,
+    "total_input_tokens": 482910,
+    "total_output_tokens": 67200,
+    "avg_duration_ms": 920
+  },
+  "d1": {
+    "banks": 3,
+    "memory_units": 1247,
+    "entities": 89,
+    "documents": 12,
+    "async_operations": 5
+  }
+}
+```
+
+### What's instrumented
+
+| Event | Dimensions | Metrics |
+|---|---|---|
+| Every HTTP request | method, endpoint (normalized), status code | duration (ms) |
+| retain, recall, reflect, consolidate | operation type, bank_id, success/error | duration (ms) |
+| LLM calls (planned) | provider, model, success/error | duration (ms), input/output tokens |
+
+Metrics are also visible in the [Cloudflare dashboard](https://dash.cloudflare.com/) under Workers & Pages > Analytics Engine, where you can build custom queries and visualizations.
+
 ## API Reference
 
 This port targets 100% route and response-shape compatibility with the [original hindsight API](https://github.com/vectorize-io/hindsight). All core pipelines are implemented. See the [original hindsight documentation](https://github.com/vectorize-io/hindsight) for request/response schemas and usage details.
@@ -363,7 +468,13 @@ This port targets 100% route and response-shape compatibility with the [original
 |---|---|---|
 | GET | `/health` | Health check (`{"status":"ok"}`) |
 | GET | `/version` | Version info, feature flags, model config |
-| GET | `/metrics` | Metrics (Prometheus text or JSON `null` via `Accept` header) |
+| GET | `/metrics` | JSON metrics summary (Analytics Engine + D1 counts — see Metrics section) |
+
+### Bank Templates
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/v1/bank-template-schema` | Get JSON Schema for bank template manifests (global, not tenant-scoped) |
 
 ### Memory Operations
 
@@ -374,6 +485,7 @@ This port targets 100% route and response-shape compatibility with the [original
 | POST | `.../reflect` | **Reflect** — agentic LLM loop with tool use over memory |
 | GET | `.../memories/list` | List memory units (paginated, filterable by type) |
 | GET | `.../memories/{id}` | Get a single memory unit |
+| GET | `.../memories/{id}/history` | Get memory version history |
 | DELETE | `.../memories/{id}` | Delete a memory unit (+ Vectorize cleanup) |
 | DELETE | `.../memories/{id}/observations` | Delete observations linked to a memory |
 | DELETE | `.../memories` | Clear all memories (optionally filtered by `?type=`) |
@@ -383,6 +495,7 @@ This port targets 100% route and response-shape compatibility with the [original
 | Method | Path | Description |
 |---|---|---|
 | GET | `/v1/{tenant}/banks` | List all banks (returns full bank objects) |
+| POST | `/v1/{tenant}/banks` | Create bank (409 on conflict) |
 | PUT | `.../banks/{bank_id}` | Update bank (returns updated bank object) |
 | PATCH | `.../banks/{bank_id}` | Partial update bank (returns updated bank object) |
 | DELETE | `.../banks/{bank_id}` | Delete bank (+ Vectorize cleanup) |
@@ -410,6 +523,7 @@ This port targets 100% route and response-shape compatibility with the [original
 |---|---|---|
 | GET | `.../documents` | List documents |
 | GET | `.../documents/{id}` | Get document |
+| PATCH | `.../documents/{id}` | Update document metadata (merge) |
 | DELETE | `.../documents/{id}` | Delete document (+ memory units + Vectorize cleanup) |
 | GET | `/v1/{tenant}/chunks/{id}` | Get chunk (top-level, not bank-scoped) |
 
@@ -430,6 +544,7 @@ This port targets 100% route and response-shape compatibility with the [original
 | GET | `.../mental-models` | List mental models |
 | POST | `.../mental-models` | Create mental model |
 | GET | `.../mental-models/{id}` | Get mental model |
+| GET | `.../mental-models/{id}/history` | Get mental model version history |
 | PATCH | `.../mental-models/{id}` | Update mental model |
 | DELETE | `.../mental-models/{id}` | Delete mental model (+ Vectorize cleanup) |
 | POST | `.../mental-models/{id}/refresh` | Refresh mental model via LLM |
@@ -439,7 +554,10 @@ This port targets 100% route and response-shape compatibility with the [original
 | Method | Path | Description |
 |---|---|---|
 | POST | `.../consolidate` | Trigger consolidation (cluster facts into observations via LLM) |
+| GET | `.../observations` | List observations |
+| GET | `.../observations/{model_id}` | Get observations linked to a mental model |
 | DELETE | `.../observations` | Clear all observations (+ Vectorize cleanup) |
+| POST | `.../consolidation-recover` | Reset stuck consolidation operations to failed |
 
 ### Operations
 
@@ -447,7 +565,38 @@ This port targets 100% route and response-shape compatibility with the [original
 |---|---|---|
 | GET | `.../operations` | List async operations (filterable by status) |
 | GET | `.../operations/{id}` | Get operation detail |
+| POST | `.../operations/{id}` | Retry a failed operation |
 | DELETE | `.../operations/{id}` | Cancel pending operation |
+
+### Webhooks
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../webhooks` | List webhooks |
+| POST | `.../webhooks` | Create webhook (URL validated against SSRF) |
+| PATCH | `.../webhooks/{id}` | Update webhook |
+| DELETE | `.../webhooks/{id}` | Delete webhook |
+| GET | `.../webhooks/{id}/deliveries` | List webhook deliveries (cursor paginated) |
+
+### Audit Logs
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../audit-logs` | List audit logs (filterable by action, resource_type) |
+| GET | `.../audit-logs/stats` | Audit log aggregates by action and resource_type |
+
+### Export & Import
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../export` | Export bank data (memories, entities, directives, documents) |
+| POST | `.../import` | Import bank data (supports `dry_run`) |
+
+### Stats
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `.../stats/memories-timeseries` | Memory count aggregated by date (configurable period) |
 
 ### Other
 
@@ -465,12 +614,14 @@ This port targets 100% route and response-shape compatibility with the [original
 hindsight-cf/
 ├── migrations/
 │   ├── 0001_initial_schema.sql        # D1 schema (10 tables + FTS5)
-│   └── 0002_api_keys.sql             # API keys table for multi-tenant auth
+│   ├── 0002_api_keys.sql             # API keys table for multi-tenant auth
+│   └── 0003_webhooks_audit_logs.sql  # Webhooks, deliveries, audit logs tables
 ├── src/
 │   ├── index.ts                       # Entry point, Hono app, queue consumer
 │   ├── env.ts                         # Cloudflare bindings type definition
 │   ├── types.ts                       # Shared request/response types
 │   ├── vectorize-utils.ts             # Batched Vectorize delete helper
+│   ├── metrics.ts                     # Analytics Engine write/read helpers
 │   ├── middleware/
 │   │   └── auth.ts                    # Bearer auth middleware (3 modes)
 │   ├── engine/
@@ -516,7 +667,9 @@ hindsight-cf/
 │       ├── operations.ts              # Async operation tracking
 │       ├── graph.ts                   # Entity co-occurrence graph
 │       ├── tags.ts                    # Tag listing
-│       └── files.ts                   # File upload (disabled)
+│       ├── files.ts                   # File upload (disabled)
+│       ├── webhooks.ts                # Webhook CRUD + delivery listing
+│       └── audit-logs.ts             # Audit log listing + stats
 ├── tests/
 │   ├── helpers.ts                     # In-memory D1/Vectorize/AI mocks
 │   ├── health.test.ts                 # Health/version endpoint tests
@@ -525,7 +678,7 @@ hindsight-cf/
 │   ├── memories.test.ts               # Memory retain/recall/delete tests
 │   ├── auth.test.ts                   # Auth middleware tests (all 3 modes)
 │   ├── integration.test.ts            # End-to-end retain → recall tests
-│   └── api-compatibility.test.ts      # Verifies all 48 original routes exist
+│   └── api-compatibility.test.ts      # 158 tests verifying API parity with original
 ├── .prettierrc                        # Prettier config (120 width, single quotes)
 ├── eslint.config.js                   # ESLint flat config (TS + Prettier)
 ├── wrangler.toml                      # Cloudflare Worker config

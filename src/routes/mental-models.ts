@@ -76,6 +76,32 @@ app.get('/:model_id', async (c) => {
   return c.json(formatMentalModel(row as Record<string, unknown>));
 });
 
+// GET /mental-models/:model_id/history — get mental model version history
+app.get('/:model_id/history', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const modelId = c.req.param('model_id');
+
+  const row = await c.env.DB.prepare(
+    "SELECT id, text, history, created_at, updated_at FROM memory_units WHERE id = ? AND bank_id = ? AND fact_type = 'mental_model'",
+  )
+    .bind(modelId, bankId)
+    .first();
+
+  if (!row) {
+    return c.json({ error: 'not_found', message: 'Mental model not found' }, 404);
+  }
+
+  const history = row.history ? JSON.parse(row.history as string) : [];
+
+  return c.json({
+    id: row.id,
+    current_text: row.text,
+    history,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  });
+});
+
 // PATCH /mental-models/:model_id — update mental model
 app.patch('/:model_id', async (c) => {
   const bankId = c.req.param('bank_id');

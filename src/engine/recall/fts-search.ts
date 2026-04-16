@@ -96,7 +96,7 @@ export async function ftsSearch(
 function sanitizeFtsQuery(query: string): string {
   // Remove FTS5 operators and special chars
   const cleaned = query
-    .replace(/[*"(){}[\]^~\\:]/g, '')
+    .replace(/[*"(){}[\]^~\\:?!@#$%&+=<>,;.]/g, '')
     .replace(/\bAND\b/gi, '')
     .replace(/\bOR\b/gi, '')
     .replace(/\bNOT\b/gi, '')

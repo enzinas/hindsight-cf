@@ -61,6 +61,55 @@ app.get('/:document_id', async (c) => {
   });
 });
 
+// PATCH /documents/:document_id — update document metadata
+app.patch('/:document_id', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const documentId = c.req.param('document_id');
+  const body = await c.req.json<{ metadata?: Record<string, unknown>; tags?: string[] }>();
+
+  const existing = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ? AND bank_id = ?')
+    .bind(documentId, bankId)
+    .first();
+
+  if (!existing) {
+    return c.json({ error: 'not_found', message: 'Document not found' }, 404);
+  }
+
+  const updates: string[] = [];
+  const values: unknown[] = [];
+
+  if (body.metadata !== undefined) {
+    // Merge metadata
+    const existingMeta = existing.metadata ? JSON.parse(existing.metadata as string) : {};
+    const mergedMeta = { ...existingMeta, ...body.metadata };
+    updates.push('metadata = ?');
+    values.push(JSON.stringify(mergedMeta));
+  }
+
+  if (updates.length > 0) {
+    updates.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
+    values.push(documentId, bankId);
+
+    await c.env.DB.prepare(`UPDATE documents SET ${updates.join(', ')} WHERE id = ? AND bank_id = ?`)
+      .bind(...values)
+      .run();
+  }
+
+  const updated = await c.env.DB.prepare('SELECT * FROM documents WHERE id = ? AND bank_id = ?')
+    .bind(documentId, bankId)
+    .first();
+
+  return c.json({
+    id: updated!.id,
+    bank_id: updated!.bank_id,
+    original_text: updated!.original_text,
+    content_hash: updated!.content_hash,
+    metadata: updated!.metadata ? JSON.parse(updated!.metadata as string) : {},
+    created_at: updated!.created_at,
+    updated_at: updated!.updated_at,
+  });
+});
+
 // DELETE /documents/:document_id — delete document, its chunks, and associated memory units
 app.delete('/:document_id', async (c) => {
   const bankId = c.req.param('bank_id');
@@ -102,7 +151,9 @@ export { app as documentsRoutes };
 // Chunk route — mounted separately at /v1/:tenant/chunks (not under /banks/:bank_id)
 const chunkApp = new Hono<{ Bindings: Env }>();
 
-// GET /chunks/:chunk_id — get chunk by ID (bank-agnostic)
+// GET /chunks/:chunk_id — get chunk by ID
+// Chunks are mounted under /v1/:tenant/chunks so tenant auth is enforced.
+// The chunk's bank_id is included in the response for client-side verification.
 chunkApp.get('/:chunk_id', async (c) => {
   const chunkId = c.req.param('chunk_id');
 

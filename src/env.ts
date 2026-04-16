@@ -5,6 +5,7 @@ export interface Env {
   R2: R2Bucket;
   AI: Ai;
   QUEUE: Queue;
+  ANALYTICS?: AnalyticsEngineDataset;
 
   // Configuration
   HINDSIGHT_VERSION: string;
@@ -15,6 +16,10 @@ export interface Env {
 
   // Optional auth — if set, all API requests must include a matching Bearer token
   HINDSIGHT_API_KEY?: string;
+
+  // Optional — Analytics Engine read access (for GET /metrics)
+  CF_ACCOUNT_ID?: string;
+  CF_API_TOKEN?: string;
 
   // Optional external LLM API keys
   OPENAI_API_KEY?: string;

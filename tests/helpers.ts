@@ -29,6 +29,9 @@ class InMemoryStore {
       directives: [],
       async_operations: [],
       api_keys: [],
+      webhooks: [],
+      webhook_deliveries: [],
+      audit_logs: [],
     };
   }
 }
@@ -643,6 +646,7 @@ export function createMockEnv(): Record<string, unknown> {
     R2: {},
     AI: new MockWorkersAI(),
     QUEUE: { send: async () => {} },
+    ANALYTICS: { writeDataPoint: () => {} },
     HINDSIGHT_VERSION: '0.1.0-test',
     DEFAULT_LLM_MODEL: '@cf/meta/llama-3.1-70b-instruct',
     DEFAULT_EMBEDDING_MODEL: '@cf/baai/bge-base-en-v1.5',

@@ -19,6 +19,7 @@ import { recall } from '../engine/recall/orchestrator';
 import { BUDGET_LIMITS } from '../engine/recall/types';
 import type { FactType } from '../types';
 import { deleteVectorsBatched } from '../vectorize-utils';
+import { writeOperationMetric } from '../metrics';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -30,6 +31,11 @@ app.post('/', async (c) => {
   // Validate request
   if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
     return c.json({ error: 'validation_error', message: 'items is required and must be non-empty' }, 400);
+  }
+
+  const MAX_RETAIN_ITEMS = 10000;
+  if (body.items.length > MAX_RETAIN_ITEMS) {
+    return c.json({ error: 'validation_error', message: `items array exceeds maximum of ${MAX_RETAIN_ITEMS} items` }, 400);
   }
 
   // Convert RetainItem[] to RetainContent[]
@@ -82,22 +88,30 @@ app.post('/', async (c) => {
       success: true,
       bank_id: bankId,
       items_count: body.items.length,
+      memory_ids: [],
       async: true,
       operation_id: operationId,
       usage: null,
     });
   }
 
+  const start = Date.now();
   try {
     const result = await retainBatch(c.env, bankId, contents, {
       documentId,
       documentTags: body.document_tags ?? [],
     });
 
+    // Flatten unitIdsByContent to get all created memory IDs
+    const memoryIds = result.unitIdsByContent.flat();
+
+    writeOperationMetric(c.env, 'retain', bankId, 'success', Date.now() - start);
+
     return c.json({
       success: true,
       bank_id: bankId,
       items_count: body.items.length,
+      memory_ids: memoryIds,
       async: false,
       operation_id: null,
       usage: {
@@ -107,6 +121,7 @@ app.post('/', async (c) => {
       },
     });
   } catch (err) {
+    writeOperationMetric(c.env, 'retain', bankId, 'error', Date.now() - start);
     console.error('[retain] Pipeline error:', err);
     return c.json(
       { error: 'retain_error', message: err instanceof Error ? err.message : 'Retain pipeline failed' },
@@ -154,6 +169,7 @@ app.post('/recall', async (c) => {
     return c.json({ error: 'validation_error', message: 'query is required' }, 400);
   }
 
+  const start = Date.now();
   try {
     const maxResults = body.max_tokens ? Math.min(body.max_tokens, 200) : (BUDGET_LIMITS[body.budget ?? 'mid'] ?? 25);
 
@@ -172,8 +188,11 @@ app.post('/recall', async (c) => {
       sourceFactMaxTokens: body.include?.source_facts?.max_tokens,
     });
 
+    writeOperationMetric(c.env, 'recall', bankId, 'success', Date.now() - start);
+
     return c.json(result);
   } catch (err) {
+    writeOperationMetric(c.env, 'recall', bankId, 'error', Date.now() - start);
     console.error('[recall] Pipeline error:', err);
     return c.json(
       { error: 'recall_error', message: err instanceof Error ? err.message : 'Recall pipeline failed' },
@@ -241,6 +260,30 @@ app.get('/:memory_id', async (c) => {
   }
 
   return c.json(row);
+});
+
+// GET /memories/:memory_id/history — get memory version history
+app.get('/:memory_id/history', async (c) => {
+  const bankId = c.req.param('bank_id');
+  const memoryId = c.req.param('memory_id');
+
+  const row = await c.env.DB.prepare('SELECT id, text, history, created_at, updated_at FROM memory_units WHERE id = ? AND bank_id = ?')
+    .bind(memoryId, bankId)
+    .first();
+
+  if (!row) {
+    return c.json({ error: 'not_found', message: 'Memory unit not found' }, 404);
+  }
+
+  const history = row.history ? JSON.parse(row.history as string) : [];
+
+  return c.json({
+    id: row.id,
+    current_text: row.text,
+    history,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  });
 });
 
 // DELETE /memories/:memory_id — delete memory unit

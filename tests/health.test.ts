@@ -44,10 +44,17 @@ describe('GET /version', () => {
 });
 
 describe('GET /metrics', () => {
-  it('returns metrics stub as text', async () => {
+  it('returns JSON metrics summary with D1 counts', async () => {
     const res = await request(testApp, 'GET', '/metrics');
     expect(res.status).toBe(200);
-    const text = await res.text();
-    expect(text).toContain('hindsight-cf');
+    const body = (await res.json()) as Record<string, unknown>;
+    // Without CF_API_TOKEN, analytics_engine is false and D1 counts are returned
+    expect(body.analytics_engine).toBe(false);
+    expect(body).toHaveProperty('d1');
+    const d1 = body.d1 as Record<string, number>;
+    expect(d1).toHaveProperty('banks');
+    expect(d1).toHaveProperty('memory_units');
+    expect(d1).toHaveProperty('entities');
+    expect(d1).toHaveProperty('documents');
   });
 });
