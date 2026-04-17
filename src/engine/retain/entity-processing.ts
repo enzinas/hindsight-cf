@@ -312,6 +312,7 @@ async function updateCooccurrences(db: D1Database, unitToEntityIds: Map<string, 
       for (let j = i + 1; j < entityIds.length; j++) {
         let id1 = entityIds[i];
         let id2 = entityIds[j];
+        if (id1 === id2) continue; // Skip self-pairs (duplicate entity in same unit)
         if (id1 > id2) [id1, id2] = [id2, id1]; // Ensure consistent ordering
 
         const key = `${id1}:${id2}`;
