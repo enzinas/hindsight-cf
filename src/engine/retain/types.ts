@@ -91,6 +91,30 @@ export interface LLMUsage {
   totalTokens: number;
 }
 
+/**
+ * Named strategy config — overrides retain pipeline defaults per-request.
+ *
+ * Strategies are stored in bank config under the `strategies` key and
+ * referenced by name in file retain requests. They control how text is
+ * chunked, what the extraction focus is, and how aggressively facts are
+ * extracted.
+ *
+ * Matches upstream hindsight's strategy system where strategies are named
+ * config overrides stored in bank config.
+ */
+export interface StrategyConfig {
+  /** Override chunk size in characters (default: 4000). */
+  chunk_size?: number;
+  /** Override extraction mode: "concise" (default) or "verbatim" for denser extraction. */
+  extraction_mode?: 'concise' | 'verbatim';
+  /** Override the bank mission for this extraction. */
+  retain_mission?: string;
+  /** Additional instructions appended to the extraction prompt. */
+  custom_instructions?: string;
+  /** Whether to extract causal links between facts. */
+  extract_causal_links?: boolean;
+}
+
 /** Result of a retain operation. */
 export interface RetainResult {
   unitIdsByContent: string[][];

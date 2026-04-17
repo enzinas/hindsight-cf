@@ -121,6 +121,7 @@ app.post('/retain', async (c) => {
       metadata: meta.metadata ?? {},
       tags: meta.tags ?? [],
       timestamp: meta.timestamp ?? now,
+      strategy: meta.strategy ?? null,
     };
 
     // Create async operation record

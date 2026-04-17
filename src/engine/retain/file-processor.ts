@@ -8,10 +8,27 @@
  * model captures charts, diagrams, scanned content, and other visual elements
  * that text extraction alone would miss. Both outputs are combined before
  * feeding into the retain pipeline.
+ *
+ * ## Parser field
+ *
+ * Upstream hindsight has a pluggable parser registry (iris, markitdown) with
+ * per-file fallback chains. The `parser` field in FileMetadata is accepted for
+ * API compatibility but has no effect — Cloudflare's native `toMarkdown()` API
+ * replaces all upstream parsers with a single, more capable extraction that
+ * handles every supported format. There is no benefit to routing through
+ * different parsers when toMarkdown already produces optimal output for all
+ * file types it supports.
+ *
+ * ## Strategy field
+ *
+ * Named strategies are config presets stored in bank config under the
+ * `strategies` key. When a strategy name is provided, its overrides
+ * (chunk_size, extraction_mode, retain_mission, custom_instructions,
+ * extract_causal_links) are applied to the retain pipeline for that file.
  */
 
 import type { Env } from '../../env';
-import type { RetainContent } from './types';
+import type { RetainContent, StrategyConfig } from './types';
 import { retainBatch } from './orchestrator';
 
 /** Shape of the task_payload for file_retain queue messages. */
@@ -24,6 +41,12 @@ export interface FileRetainPayload {
   metadata: Record<string, string>;
   tags: string[];
   timestamp: string;
+  /**
+   * Named strategy to apply during retention. Looked up from bank config
+   * `strategies` map. Controls chunk_size, extraction_mode, retain_mission,
+   * custom_instructions, and extract_causal_links.
+   */
+  strategy: string | null;
 }
 
 /** Result returned by processFileRetain. */
@@ -151,10 +174,23 @@ export async function processFileRetain(
     tags: payload.tags,
   };
 
+  // Load named strategy from bank config if specified
+  let strategy: StrategyConfig | undefined;
+  if (payload.strategy) {
+    const bankRow = await env.DB.prepare('SELECT config FROM banks WHERE bank_id = ?')
+      .bind(bankId)
+      .first<{ config: string }>();
+    if (bankRow?.config) {
+      const config = JSON.parse(bankRow.config) as { strategies?: Record<string, StrategyConfig> };
+      strategy = config.strategies?.[payload.strategy];
+    }
+  }
+
   // Run through existing retain pipeline
   const result = await retainBatch(env, bankId, [content], {
     documentId: payload.document_id,
     documentTags: payload.tags,
+    strategy,
   });
 
   const memoryIds = result.unitIdsByContent.flat();

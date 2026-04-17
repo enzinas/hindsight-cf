@@ -191,11 +191,19 @@ async function extractFactsFromChunk(
   eventDate: string,
   mission: string,
   extractCausal: boolean,
+  extractionMode?: 'concise' | 'verbatim',
+  customInstructions?: string,
 ): Promise<{ facts: RawFact[]; usage: LLMUsage }> {
-  let systemPrompt = CONCISE_PROMPT;
+  // Verbatim mode uses the base prompt without selectivity guidelines,
+  // resulting in denser, more exhaustive fact extraction
+  let systemPrompt = extractionMode === 'verbatim' ? BASE_FACT_EXTRACTION_PROMPT : CONCISE_PROMPT;
 
   if (mission) {
     systemPrompt += `\n\nFOCUS: ${mission}`;
+  }
+
+  if (customInstructions) {
+    systemPrompt += `\n\nADDITIONAL INSTRUCTIONS: ${customInstructions}`;
   }
 
   if (extractCausal) {
@@ -331,7 +339,13 @@ function convertRawFact(
 export async function extractFactsFromContents(
   env: Env,
   contents: RetainContent[],
-  bankConfig: { mission?: string; extractCausalLinks?: boolean },
+  bankConfig: {
+    mission?: string;
+    extractCausalLinks?: boolean;
+    chunkSize?: number;
+    extractionMode?: 'concise' | 'verbatim';
+    customInstructions?: string;
+  },
 ): Promise<{
   facts: ExtractedFact[];
   chunks: ChunkMetadata[];
@@ -348,7 +362,7 @@ export async function extractFactsFromContents(
   // sequential is safer for initial implementation
   for (let contentIndex = 0; contentIndex < contents.length; contentIndex++) {
     const content = contents[contentIndex];
-    const textChunks = chunkText(content.content);
+    const textChunks = chunkText(content.content, bankConfig.chunkSize);
 
     // Extract facts from each chunk
     const chunkPromises = textChunks.map(async (chunk, localChunkIdx) => {
@@ -361,6 +375,8 @@ export async function extractFactsFromContents(
         content.eventDate,
         bankConfig.mission ?? '',
         bankConfig.extractCausalLinks ?? false,
+        bankConfig.extractionMode,
+        bankConfig.customInstructions,
       );
 
       // Convert raw facts to ExtractedFact objects

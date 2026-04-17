@@ -40,7 +40,56 @@ curl -X POST "$BASE/files/retain" \
   -F "files=@file2.png"
 ```
 
+**With a named strategy:**
+```bash
+curl -X POST "$BASE/files/retain" \
+  -F "files=@meeting.pdf" \
+  -F 'request={"files_metadata":[{"strategy":"meeting_notes","tags":["meetings"]}]}'
+```
+
 **Response:** `{ "operation_ids": ["uuid1", "uuid2"] }` — one operation per file. Track progress via `GET .../operations/{id}`.
+
+#### Strategies
+
+Named strategies are retain pipeline presets stored in bank config under the `strategies` key. They override defaults for how text is chunked and facts are extracted.
+
+**Setting up a strategy via bank config:**
+```bash
+curl -X PATCH "$BASE/config" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "strategies": {
+      "meeting_notes": {
+        "chunk_size": 2000,
+        "extraction_mode": "verbatim",
+        "retain_mission": "Extract action items, decisions, and attendee commitments",
+        "custom_instructions": "Pay special attention to deadlines and owners",
+        "extract_causal_links": true
+      },
+      "research_paper": {
+        "chunk_size": 6000,
+        "extraction_mode": "concise",
+        "retain_mission": "Extract key findings, methodology, and conclusions"
+      }
+    }
+  }'
+```
+
+**Strategy fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `chunk_size` | number | 4000 | Text chunk size in characters before fact extraction |
+| `extraction_mode` | `"concise"` \| `"verbatim"` | `"concise"` | `concise` extracts only facts worth remembering long-term; `verbatim` extracts exhaustively |
+| `retain_mission` | string | bank mission | Override the bank's mission for extraction focus |
+| `custom_instructions` | string | _(none)_ | Additional instructions appended to the extraction prompt |
+| `extract_causal_links` | boolean | false | Whether to detect causal relationships between facts |
+
+Reference a strategy by name in `files_metadata[].strategy` when uploading files.
+
+#### Parser field
+
+Upstream hindsight has a pluggable parser registry with per-file fallback chains (iris, markitdown). The `parser` field is accepted in `files_metadata` for API compatibility but has no effect in hindsight-cf. Cloudflare's native `env.AI.toMarkdown()` replaces all upstream parsers with a single extraction API that handles every supported format — there is no benefit to routing through different parsers.
 
 ## Architecture
 

@@ -16,7 +16,7 @@
  */
 
 import type { Env } from '../../env';
-import type { RetainContent, ProcessedFact, EntityRef, RetainResult, LLMUsage } from './types';
+import type { RetainContent, ProcessedFact, EntityRef, RetainResult, LLMUsage, StrategyConfig } from './types';
 import { extractFactsFromContents } from './fact-extraction';
 import { generateEmbeddings } from '../../providers/embeddings';
 import { ensureBank, handleDocumentTracking, insertFactsBatch } from './fact-storage';
@@ -54,6 +54,7 @@ export async function retainBatch(
     documentId?: string | null;
     documentTags?: string[];
     extractCausalLinks?: boolean;
+    strategy?: StrategyConfig;
   },
 ): Promise<RetainResult> {
   const documentId = options?.documentId ?? generateUUID();
@@ -73,9 +74,13 @@ export async function retainBatch(
     .bind(bankId)
     .first<{ mission: string; config: string }>();
 
+  const strategy = options?.strategy;
   const bankConfig = {
-    mission: bankRow?.mission ?? '',
-    extractCausalLinks: options?.extractCausalLinks ?? false,
+    mission: strategy?.retain_mission ?? bankRow?.mission ?? '',
+    extractCausalLinks: strategy?.extract_causal_links ?? options?.extractCausalLinks ?? false,
+    chunkSize: strategy?.chunk_size,
+    extractionMode: strategy?.extraction_mode,
+    customInstructions: strategy?.custom_instructions,
   };
 
   // Step 1: Ensure bank exists

@@ -156,7 +156,9 @@ app.get('/stats', async (c) => {
 });
 
 // Default config values — resolved config = defaults merged with overrides
-const CONFIG_DEFAULTS: Record<string, unknown> = {};
+const CONFIG_DEFAULTS: Record<string, unknown> = {
+  strategies: {},
+};
 
 function resolveConfig(overrides: Record<string, unknown>) {
   return { ...CONFIG_DEFAULTS, ...overrides };

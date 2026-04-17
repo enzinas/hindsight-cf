@@ -172,7 +172,7 @@ describe('Bank config endpoints', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.bank_id).toBe('config-test');
-    expect(body.config).toEqual({});
+    expect(body.config).toEqual({ strategies: {} });
     expect(body.overrides).toEqual({});
   });
 
