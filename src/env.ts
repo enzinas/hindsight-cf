@@ -13,6 +13,7 @@ export interface Env {
   DEFAULT_EMBEDDING_MODEL: string;
   DEFAULT_RERANKER_MODEL: string;
   DEFAULT_VISION_MODEL: string;
+  DEFAULT_SPEECH_MODEL: string;
   EMBEDDING_DIMENSIONS: string;
 
   // Optional auth — if set, all API requests must include a matching Bearer token

@@ -15,6 +15,7 @@
  *   - CSV (.csv) — text extraction via toMarkdown
  *   - HTML (.html) — text extraction via toMarkdown
  *   - XML (.xml) — text extraction via toMarkdown
+ *   - Audio (.mp3, .wav, .ogg, .flac, .m4a, .webm) — transcription via Whisper
  *   - Plain text, markdown, JSON, YAML — read directly
  */
 import { Hono } from 'hono';

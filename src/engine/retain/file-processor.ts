@@ -58,6 +58,18 @@ const MARKDOWN_ONLY_TYPES = new Set([
   'application/vnd.apple.numbers', // .numbers
 ]);
 
+/** Content types that get transcribed via speech-to-text model. */
+const AUDIO_TYPES = new Set([
+  'audio/mpeg', // .mp3
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/ogg',
+  'audio/flac',
+  'audio/webm',
+  'audio/mp4', // .m4a
+]);
+
 /** Content types that get toMarkdown + vision model (visually rich). */
 const VISUAL_TYPES = new Set([
   'application/pdf',
@@ -91,6 +103,9 @@ export async function processFileRetain(
   if (DIRECT_TEXT_TYPES.has(contentType) || (contentType.startsWith('text/') && !MARKDOWN_ONLY_TYPES.has(contentType) && !VISUAL_TYPES.has(contentType))) {
     // Plain text — read directly
     text = await r2Object.text();
+  } else if (AUDIO_TYPES.has(contentType)) {
+    // Audio — transcribe via Whisper speech-to-text
+    text = await transcribeAudio(env, r2Object, payload.file_name);
   } else if (VISUAL_TYPES.has(contentType)) {
     // Visually rich formats — toMarkdown + vision model
     const fileBlob = new Blob([await r2Object.arrayBuffer()], { type: contentType });
@@ -214,6 +229,26 @@ File: ${fileName}`,
     return (result as { response: string }).response;
   }
   return String(result);
+}
+
+/**
+ * Transcribe audio using Whisper speech-to-text model.
+ */
+async function transcribeAudio(env: Env, r2Object: R2ObjectBody, fileName: string): Promise<string> {
+  const buffer = await r2Object.arrayBuffer();
+  const audioData = [...new Uint8Array(buffer)];
+
+  const speechModel = env.DEFAULT_SPEECH_MODEL || '@cf/openai/whisper';
+  const result = await env.AI.run(
+    speechModel as Parameters<typeof env.AI.run>[0],
+    { audio: audioData } as Parameters<typeof env.AI.run>[1],
+  );
+
+  if (result && typeof result === 'object' && 'text' in result) {
+    const text = (result as { text: string }).text;
+    return `## Audio Transcription: ${fileName}\n\n${text}`;
+  }
+  return '';
 }
 
 /**

@@ -6,9 +6,41 @@ A TypeScript port of [**hindsight**](https://github.com/vectorize-io/hindsight) 
 
 This port targets API compatibility with **hindsight v0.5.2**. For full details on hindsight's memory model, architecture, and concepts (memory banks, disposition traits, directives, mental models, entity graphs, etc.), see the [original hindsight repository](https://github.com/vectorize-io/hindsight).
 
-### Known limitations
+### File Upload
 
-- **File upload** (`POST .../files/retain`) is not supported in this version. The endpoint exists but returns a `501` error. File-based retention requires multipart upload handling and document processing pipelines that are not yet ported to the Cloudflare Workers runtime. Use the standard `POST .../memories` retain endpoint instead.
+`POST .../files/retain` accepts multipart file uploads (max **20MB per file**) and processes them asynchronously. Files are stored in R2, then a queue consumer extracts text and feeds it through the standard retain pipeline (chunking, fact extraction, embedding, storage).
+
+**Two-step extraction for visual formats:**
+
+| Format | Text Extraction | + Vision Model | Notes |
+|--------|----------------|---------------|-------|
+| PDF (`.pdf`) | `env.AI.toMarkdown()` | Yes | Captures charts, scans, diagrams |
+| PPTX (`.pptx`) | `env.AI.toMarkdown()` | Yes | Slides are inherently visual |
+| Images (`.jpg`, `.png`, `.webp`, `.svg`) | `env.AI.toMarkdown()` | Yes | OCR + semantic description |
+| DOCX (`.docx`) | `env.AI.toMarkdown()` | No | Text-centric |
+| Excel (`.xlsx`, `.xls`, `.xlsm`, `.xlsb`) | `env.AI.toMarkdown()` | No | Text-centric |
+| CSV, HTML, XML | `env.AI.toMarkdown()` | No | Text-centric |
+| Audio (`.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, `.webm`) | Whisper speech-to-text | No | Transcription via `@cf/openai/whisper` |
+| Plain text, Markdown, JSON, YAML | Direct read | No | No conversion needed |
+
+**Usage:**
+```bash
+# Upload a single file
+curl -X POST "$BASE/files/retain" \
+  -F "files=@document.pdf"
+
+# Upload with metadata
+curl -X POST "$BASE/files/retain" \
+  -F "files=@report.pdf" \
+  -F 'request={"files_metadata":[{"context":"Q4 report","tags":["finance"]}]}'
+
+# Upload multiple files
+curl -X POST "$BASE/files/retain" \
+  -F "files=@file1.pdf" \
+  -F "files=@file2.png"
+```
+
+**Response:** `{ "operation_ids": ["uuid1", "uuid2"] }` — one operation per file. Track progress via `GET .../operations/{id}`.
 
 ## Architecture
 
@@ -239,6 +271,8 @@ These are set in `wrangler.toml` and can be changed before deploying:
 | `DEFAULT_LLM_MODEL` | `@cf/qwen/qwen3-30b-a3b-fp8` | Workers AI model for reflect/retain (function calling, reasoning) |
 | `DEFAULT_EMBEDDING_MODEL` | `@cf/baai/bge-m3` | Workers AI embedding model (1024 dims, multilingual) |
 | `DEFAULT_RERANKER_MODEL` | `@cf/baai/bge-reranker-base` | Workers AI reranker model |
+| `DEFAULT_VISION_MODEL` | `@cf/meta/llama-3.2-11b-vision-instruct` | Workers AI vision model for file retain (PDF/PPTX/image visual analysis) |
+| `DEFAULT_SPEECH_MODEL` | `@cf/openai/whisper` | Workers AI speech-to-text model for audio file transcription |
 | `EMBEDDING_DIMENSIONS` | `1024` | Embedding vector dimensions |
 
 ### Secrets
@@ -646,7 +680,7 @@ When both `tags` and `tag_groups` are provided, both must pass (AND). Multiple t
 |---|---|---|
 | GET | `.../graph` | Entity co-occurrence graph (`{nodes, edges, total_nodes, total_edges}`) |
 | GET | `.../tags` | List all tags |
-| POST | `.../files/retain` | File upload (not implemented — returns 501; use `POST .../memories` instead) |
+| POST | `.../files/retain` | File upload — multipart, max 20MB/file, async processing via R2 + Queue |
 
 > **Note:** Paths shown as `...` are relative to `/v1/{tenant}/banks/{bank_id}` unless otherwise noted. The `{tenant}` segment defaults to `default` for single-tenant deployments.
 
@@ -690,6 +724,7 @@ hindsight-cf/
 │   │       ├── fact-extraction.ts     # LLM fact extraction
 │   │       ├── fact-storage.ts        # D1 + Vectorize storage
 │   │       ├── chunk-storage.ts       # Document chunking
+│   │       ├── file-processor.ts     # File text extraction (toMarkdown + vision)
 │   │       ├── deduplication.ts       # Semantic dedup
 │   │       ├── entity-processing.ts   # Entity resolution
 │   │       ├── link-creation.ts       # Temporal/semantic/causal links
@@ -709,7 +744,7 @@ hindsight-cf/
 │       ├── operations.ts              # Async operation tracking
 │       ├── graph.ts                   # Entity co-occurrence graph
 │       ├── tags.ts                    # Tag listing
-│       ├── files.ts                   # File upload (disabled)
+│       ├── files.ts                   # File upload + retain via R2/Queue
 │       ├── webhooks.ts                # Webhook CRUD + delivery listing
 │       └── audit-logs.ts             # Audit log listing + stats
 ├── tests/
