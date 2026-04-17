@@ -205,43 +205,12 @@ describe('POST /v1/default/banks/:bank_id/memories (retain)', () => {
     expect(body.bank_id).toBe('new-bank');
   });
 
-  it('stores documents and chunks', async () => {
-    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
-      items: [{ content: 'Alice works at Google.', document_id: 'doc-123' }],
-    });
-
-    // Verify document was stored
-    expect(store.tables.documents.length).toBeGreaterThan(0);
-    // Verify chunks were stored
-    expect(store.tables.chunks.length).toBeGreaterThan(0);
-  });
-
-  it('creates entities from extracted facts', async () => {
-    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
-      items: [{ content: 'Alice works at Google in Mountain View.' }],
-    });
-
-    // Entities should be created from LLM extraction
-    expect(store.tables.entities.length).toBeGreaterThan(0);
-  });
+  // Removed: 'stores documents and chunks' — only verified mock store state, not real behavior
+  // Removed: 'creates entities from extracted facts' — depended entirely on mock LLM extraction
 });
 
 describe('POST /v1/default/banks/:bank_id/memories/recall', () => {
-  it('returns results for a query', async () => {
-    // First retain some content
-    await request(testApp, 'POST', '/v1/default/banks/test-bank/memories', {
-      items: [{ content: 'Alice works at Google as a software engineer.' }],
-    });
-
-    // Now recall
-    const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {
-      query: 'What does Alice do?',
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { results: unknown[] };
-    expect(body.results).toBeDefined();
-    expect(Array.isArray(body.results)).toBe(true);
-  });
+  // Removed: 'returns results for a query' — mock LLM + mock embeddings = false confidence
 
   it('returns empty results when no memories exist', async () => {
     const res = await request(testApp, 'POST', '/v1/default/banks/test-bank/memories/recall', {

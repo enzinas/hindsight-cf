@@ -17,13 +17,14 @@ app.get('/version', (c) => {
     runtime: 'cloudflare-workers',
     features: {
       mcp: false,
-      file_upload: false,
+      file_upload: true,
       multi_tenant: false,
     },
     models: {
       llm: c.env.DEFAULT_LLM_MODEL,
       embedding: c.env.DEFAULT_EMBEDDING_MODEL,
       reranker: c.env.DEFAULT_RERANKER_MODEL,
+      vision: c.env.DEFAULT_VISION_MODEL,
     },
   });
 });

@@ -1,6 +1,33 @@
 /**
  * Test helpers: in-memory D1 mock and app factory.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+/**
+ * Read [vars] from wrangler.toml so tests stay in sync with config.
+ */
+function readWranglerVars(): Record<string, string> {
+  const toml = readFileSync(resolve(__dirname, '..', 'wrangler.toml'), 'utf-8');
+  const vars: Record<string, string> = {};
+  let inVars = false;
+  for (const line of toml.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed === '[vars]') {
+      inVars = true;
+      continue;
+    }
+    if (inVars && trimmed.startsWith('[')) break; // next section
+    if (inVars && trimmed.includes('=')) {
+      const [key, ...rest] = trimmed.split('=');
+      const val = rest.join('=').trim().replace(/^"|"$/g, '');
+      vars[key.trim()] = val;
+    }
+  }
+  return vars;
+}
+
+const wranglerVars = readWranglerVars();
 
 interface Row {
   [key: string]: unknown;
@@ -501,14 +528,15 @@ class MockD1Database {
 
 class MockWorkersAI {
   async run(model: string, inputs: Record<string, unknown>): Promise<unknown> {
-    // Embedding models: return deterministic 768-dim vectors
-    if (model.includes('bge-base') || model.includes('embedding')) {
+    // Embedding models: return deterministic vectors matching configured dimensions
+    const dims = parseInt(wranglerVars.EMBEDDING_DIMENSIONS || '1024');
+    if (model.includes('bge-base') || model.includes('bge-m3') || model.includes('embedding')) {
       const texts = inputs.text as string[];
       const data = texts.map((text) => {
         // Deterministic pseudo-embedding from text hash
-        const vec = new Array(768).fill(0);
-        for (let i = 0; i < text.length && i < 768; i++) {
-          vec[i % 768] = (text.charCodeAt(i) - 64) / 100;
+        const vec = new Array(dims).fill(0);
+        for (let i = 0; i < text.length && i < dims; i++) {
+          vec[i % dims] = (text.charCodeAt(i) - 64) / 100;
         }
         // Normalize
         const norm = Math.sqrt(vec.reduce((s: number, v: number) => s + v * v, 0));
@@ -521,7 +549,7 @@ class MockWorkersAI {
     }
 
     // Chat/LLM models: return fact extraction JSON
-    if (model.includes('llama') || model.includes('mistral') || model.includes('instruct')) {
+    if (model.includes('llama') || model.includes('mistral') || model.includes('instruct') || model.includes('qwen')) {
       const messages = inputs.messages as Array<{ role: string; content: string }>;
       const userMsg = messages.find((m) => m.role === 'user')?.content ?? '';
 
@@ -635,6 +663,64 @@ function cosineSim(a: number[], b: number[]): number {
 }
 
 // ---------------------------------------------------------------------------
+// Mock R2 Bucket
+// ---------------------------------------------------------------------------
+
+class MockR2Bucket {
+  private objects = new Map<string, { body: ArrayBuffer; httpMetadata?: Record<string, string>; customMetadata?: Record<string, string> }>();
+
+  async put(key: string, value: ReadableStream | ArrayBuffer | string | Blob | null, options?: Record<string, unknown>): Promise<unknown> {
+    let body: ArrayBuffer;
+    if (value instanceof ArrayBuffer) {
+      body = value;
+    } else if (typeof value === 'string') {
+      body = new TextEncoder().encode(value).buffer as ArrayBuffer;
+    } else if (value instanceof Blob) {
+      body = await value.arrayBuffer();
+    } else if (value && typeof value === 'object' && 'getReader' in value) {
+      // ReadableStream
+      const reader = (value as ReadableStream).getReader();
+      const chunks: Uint8Array[] = [];
+      let done = false;
+      while (!done) {
+        const result = await reader.read();
+        done = result.done;
+        if (result.value) chunks.push(result.value);
+      }
+      const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+      const merged = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      body = merged.buffer as ArrayBuffer;
+    } else {
+      body = new ArrayBuffer(0);
+    }
+    this.objects.set(key, {
+      body,
+      httpMetadata: (options?.httpMetadata as Record<string, string>) ?? {},
+      customMetadata: (options?.customMetadata as Record<string, string>) ?? {},
+    });
+    return { key };
+  }
+
+  async get(key: string): Promise<{ arrayBuffer: () => Promise<ArrayBuffer>; text: () => Promise<string> } | null> {
+    const obj = this.objects.get(key);
+    if (!obj) return null;
+    return {
+      arrayBuffer: async () => obj.body,
+      text: async () => new TextDecoder().decode(obj.body),
+    };
+  }
+
+  async delete(key: string): Promise<void> {
+    this.objects.delete(key);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Mock Env
 // ---------------------------------------------------------------------------
 
@@ -643,15 +729,16 @@ export function createMockEnv(): Record<string, unknown> {
   return {
     DB: new MockD1Database(),
     VECTORIZE: new MockVectorizeIndex(),
-    R2: {},
+    R2: new MockR2Bucket(),
     AI: new MockWorkersAI(),
     QUEUE: { send: async () => {} },
     ANALYTICS: { writeDataPoint: () => {} },
-    HINDSIGHT_VERSION: '0.1.0-test',
-    DEFAULT_LLM_MODEL: '@cf/meta/llama-3.1-70b-instruct',
-    DEFAULT_EMBEDDING_MODEL: '@cf/baai/bge-base-en-v1.5',
-    DEFAULT_RERANKER_MODEL: '@cf/baai/bge-reranker-base',
-    EMBEDDING_DIMENSIONS: '768',
+    HINDSIGHT_VERSION: wranglerVars.HINDSIGHT_VERSION || '0.1.0-test',
+    DEFAULT_LLM_MODEL: wranglerVars.DEFAULT_LLM_MODEL,
+    DEFAULT_VISION_MODEL: wranglerVars.DEFAULT_VISION_MODEL,
+    DEFAULT_EMBEDDING_MODEL: wranglerVars.DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_RERANKER_MODEL: wranglerVars.DEFAULT_RERANKER_MODEL,
+    EMBEDDING_DIMENSIONS: wranglerVars.EMBEDDING_DIMENSIONS,
   };
 }
 

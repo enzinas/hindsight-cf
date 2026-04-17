@@ -12,6 +12,7 @@ export interface Env {
   DEFAULT_LLM_MODEL: string;
   DEFAULT_EMBEDDING_MODEL: string;
   DEFAULT_RERANKER_MODEL: string;
+  DEFAULT_VISION_MODEL: string;
   EMBEDDING_DIMENSIONS: string;
 
   // Optional auth — if set, all API requests must include a matching Bearer token

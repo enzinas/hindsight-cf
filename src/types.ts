@@ -184,6 +184,22 @@ export interface DirectiveResponse {
   updated_at: string;
 }
 
+/** Per-file metadata for file retain requests. */
+export interface FileMetadata {
+  document_id?: string | null;
+  context?: string | null;
+  metadata?: Record<string, string> | null;
+  tags?: string[] | null;
+  timestamp?: string | null;
+  parser?: string | null;
+  strategy?: string | null;
+}
+
+/** Response from POST /files/retain. */
+export interface FileRetainResponse {
+  operation_ids: string[];
+}
+
 export interface OperationResponse {
   operation_id: string;
   bank_id: string;

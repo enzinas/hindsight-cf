@@ -948,6 +948,19 @@ export default {
             break;
           }
 
+          case 'file_retain': {
+            const { processFileRetain } = await import('./engine/retain/file-processor');
+            const filePayload = payload.task_payload as unknown as import('./engine/retain/file-processor').FileRetainPayload;
+            const fileResult = await processFileRetain(env, payload.bank_id, filePayload);
+            resultMetadata = {
+              file_name: filePayload.file_name,
+              facts_stored: fileResult.factsStored,
+              memory_ids: fileResult.memoryIds,
+              usage: fileResult.usage,
+            };
+            break;
+          }
+
           case 'consolidate': {
             const { consolidate } = await import('./engine/consolidate/orchestrator');
             const result = await consolidate(env, {

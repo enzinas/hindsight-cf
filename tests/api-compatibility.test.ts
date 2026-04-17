@@ -847,17 +847,96 @@ describe('Graph & Tags — implemented', () => {
 // SECTION 13: Files
 // =========================================================================
 
-describe('Files — not implemented', () => {
+describe('Files — file retain', () => {
   // Original: POST /api/files/retain
-  // CF restructured to: POST /v1/:tenant/banks/:bank_id/files/retain
-  // Returns 501 Not Implemented — route exists but file upload is not ported to CF
-  it('POST /files/retain — route exists, returns 501 not implemented', async () => {
+  // CF: POST /v1/:tenant/banks/:bank_id/files/retain
+  // Accepts multipart/form-data, returns { operation_ids: string[] }
+
+  it('POST /files/retain — with text file returns operation_ids', async () => {
     const url = `http://localhost${BANK_BASE}/files/retain`;
-    const response = await testApp.fetch(new Request(url, { method: 'POST' }));
-    expect(response.status).toBe(501);
+    const formData = new FormData();
+    formData.append('files', new File(['Hello world, this is test content.'], 'test.txt', { type: 'text/plain' }));
+
+    const response = await testApp.fetch(new Request(url, { method: 'POST', body: formData }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { operation_ids: string[] };
+    expect(body).toHaveProperty('operation_ids');
+    expect(Array.isArray(body.operation_ids)).toBe(true);
+    expect(body.operation_ids.length).toBe(1);
+    expect(typeof body.operation_ids[0]).toBe('string');
+  });
+
+  it('POST /files/retain — multiple files returns matching operation_ids count', async () => {
+    const url = `http://localhost${BANK_BASE}/files/retain`;
+    const formData = new FormData();
+    formData.append('files', new File(['File one content'], 'file1.txt', { type: 'text/plain' }));
+    formData.append('files', new File(['File two content'], 'file2.txt', { type: 'text/plain' }));
+
+    const response = await testApp.fetch(new Request(url, { method: 'POST', body: formData }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { operation_ids: string[] };
+    expect(body.operation_ids.length).toBe(2);
+  });
+
+  it('POST /files/retain — no files returns 400', async () => {
+    const url = `http://localhost${BANK_BASE}/files/retain`;
+    const formData = new FormData();
+    // No files appended
+
+    const response = await testApp.fetch(new Request(url, { method: 'POST', body: formData }));
+    expect(response.status).toBe(400);
     const body = await response.json() as Record<string, unknown>;
-    expect(body).toHaveProperty('error', 'not_implemented');
-    expect(body).toHaveProperty('message');
+    expect(body).toHaveProperty('error', 'invalid_request');
+  });
+
+  it('POST /files/retain — with files_metadata passes through', async () => {
+    const url = `http://localhost${BANK_BASE}/files/retain`;
+    const formData = new FormData();
+    formData.append('files', new File(['Tagged content'], 'tagged.txt', { type: 'text/plain' }));
+    formData.append('request', JSON.stringify({
+      files_metadata: [{
+        context: 'Test context',
+        tags: ['test-tag'],
+        metadata: { source: 'unit-test' },
+      }],
+    }));
+
+    const response = await testApp.fetch(new Request(url, { method: 'POST', body: formData }));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { operation_ids: string[] };
+    expect(body.operation_ids.length).toBe(1);
+  });
+
+  it('POST /files/retain — mismatched files_metadata length returns 400', async () => {
+    const url = `http://localhost${BANK_BASE}/files/retain`;
+    const formData = new FormData();
+    formData.append('files', new File(['Content'], 'file.txt', { type: 'text/plain' }));
+    formData.append('request', JSON.stringify({
+      files_metadata: [
+        { context: 'First' },
+        { context: 'Second' },
+      ],
+    }));
+
+    const response = await testApp.fetch(new Request(url, { method: 'POST', body: formData }));
+    expect(response.status).toBe(400);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body).toHaveProperty('error', 'invalid_request');
+  });
+
+  it('POST /files/retain — file over 20MB returns 413 with clear error', async () => {
+    const url = `http://localhost${BANK_BASE}/files/retain`;
+    const formData = new FormData();
+    // Create a file just over 20MB
+    const oversized = new File([new ArrayBuffer(21 * 1024 * 1024)], 'huge.pdf', { type: 'application/pdf' });
+    formData.append('files', oversized);
+
+    const response = await testApp.fetch(new Request(url, { method: 'POST', body: formData }));
+    expect(response.status).toBe(413);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body).toHaveProperty('error', 'file_too_large');
+    expect(body).toHaveProperty('file_name', 'huge.pdf');
+    expect(body).toHaveProperty('max_size', 20 * 1024 * 1024);
   });
 });
 
