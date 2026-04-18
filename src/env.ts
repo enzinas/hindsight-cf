@@ -23,6 +23,9 @@ export interface Env {
   CF_ACCOUNT_ID?: string;
   CF_API_TOKEN?: string;
 
+  // Optional — admin backup/restore page auth (set via wrangler secret)
+  HINDSIGHT_ADMIN_KEY?: string;
+
   // Optional external LLM API keys
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;

@@ -202,6 +202,73 @@ export interface FileRetainResponse {
   operation_ids: string[];
 }
 
+// =============================================================================
+// Bank Template (Import/Export) — matches upstream BankTemplateManifest
+// =============================================================================
+
+export interface BankTemplateConfig {
+  reflect_mission?: string | null;
+  retain_mission?: string | null;
+  retain_extraction_mode?: string | null;
+  retain_custom_instructions?: string | null;
+  retain_chunk_size?: number | null;
+  enable_observations?: boolean | null;
+  observations_mission?: string | null;
+  disposition_skepticism?: number | null;
+  disposition_literalism?: number | null;
+  disposition_empathy?: number | null;
+  entity_labels?: Array<Record<string, unknown>> | null;
+  entities_allow_free_form?: boolean | null;
+  retain_default_strategy?: string | null;
+  retain_strategies?: Record<string, unknown> | null;
+  retain_chunk_batch_size?: number | null;
+  mcp_enabled_tools?: string[] | null;
+  consolidation_llm_batch_size?: number | null;
+  consolidation_source_facts_max_tokens?: number | null;
+  consolidation_source_facts_max_tokens_per_observation?: number | null;
+  max_observations_per_scope?: number | null;
+  reflect_source_facts_max_tokens?: number | null;
+}
+
+export interface MentalModelTrigger {
+  refresh_after_consolidation?: boolean;
+}
+
+export interface BankTemplateMentalModel {
+  id: string;
+  name: string;
+  source_query: string;
+  tags?: string[];
+  max_tokens?: number;
+  trigger?: MentalModelTrigger;
+}
+
+export interface BankTemplateDirective {
+  name: string;
+  content: string;
+  priority?: number;
+  is_active?: boolean;
+  tags?: string[];
+}
+
+export interface BankTemplateManifest {
+  version: string;
+  bank?: BankTemplateConfig | null;
+  mental_models?: BankTemplateMentalModel[] | null;
+  directives?: BankTemplateDirective[] | null;
+}
+
+export interface BankTemplateImportResponse {
+  bank_id: string;
+  config_applied: boolean;
+  mental_models_created: string[];
+  mental_models_updated: string[];
+  directives_created: string[];
+  directives_updated: string[];
+  operation_ids: string[];
+  dry_run: boolean;
+}
+
 export interface OperationResponse {
   operation_id: string;
   bank_id: string;

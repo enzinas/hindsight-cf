@@ -24,6 +24,8 @@ import { tagsRoutes } from './routes/tags';
 import { filesRoutes } from './routes/files';
 import { webhooksRoutes } from './routes/webhooks';
 import { auditLogsRoutes } from './routes/audit-logs';
+import { bankTemplatesRoutes } from './routes/bank-templates';
+import { adminRoutes } from './routes/admin';
 import { writeHttpMetric, writeOperationMetric } from './metrics';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -546,187 +548,8 @@ bank.get('/stats/memories-timeseries', async (c) => {
   });
 });
 
-// GET /export — export bank data as a template
-bank.get('/export', async (c) => {
-  const bankId = c.req.param('bank_id')!;
-
-  const bank = await c.env.DB.prepare('SELECT * FROM banks WHERE bank_id = ?').bind(bankId).first();
-  if (!bank) {
-    return c.json({ error: 'not_found', message: 'Bank not found' }, 404);
-  }
-
-  const [memories, entities, directives, documents] = await Promise.all([
-    c.env.DB.prepare('SELECT * FROM memory_units WHERE bank_id = ? ORDER BY created_at ASC').bind(bankId).all(),
-    c.env.DB.prepare('SELECT * FROM entities WHERE bank_id = ? ORDER BY canonical_name ASC').bind(bankId).all(),
-    c.env.DB.prepare('SELECT * FROM directives WHERE bank_id = ? ORDER BY priority DESC').bind(bankId).all(),
-    c.env.DB.prepare('SELECT id, bank_id, content_hash, metadata, created_at FROM documents WHERE bank_id = ?').bind(bankId).all(),
-  ]);
-
-  return c.json({
-    version: '1.0',
-    exported_at: new Date().toISOString(),
-    bank: formatBank(bank as Record<string, unknown>),
-    memories: memories.results.map((row: Record<string, unknown>) => ({
-      id: row.id,
-      text: row.text,
-      context: row.context,
-      event_date: row.event_date,
-      fact_type: row.fact_type,
-      metadata: row.metadata ? JSON.parse(row.metadata as string) : {},
-      tags: row.tags ? JSON.parse(row.tags as string) : [],
-      proof_count: row.proof_count,
-      source_memory_ids: row.source_memory_ids ? JSON.parse(row.source_memory_ids as string) : [],
-      created_at: row.created_at,
-    })),
-    entities: entities.results.map((row: Record<string, unknown>) => ({
-      id: row.id,
-      canonical_name: row.canonical_name,
-      metadata: row.metadata ? JSON.parse(row.metadata as string) : {},
-      mention_count: row.mention_count,
-      first_seen: row.first_seen,
-      last_seen: row.last_seen,
-    })),
-    directives: directives.results.map((row: Record<string, unknown>) => ({
-      id: row.id,
-      name: row.name,
-      content: row.content,
-      priority: row.priority,
-      is_active: row.is_active === 1,
-      tags: row.tags ? JSON.parse(row.tags as string) : [],
-    })),
-    documents: documents.results.map((row: Record<string, unknown>) => ({
-      id: row.id,
-      content_hash: row.content_hash,
-      metadata: row.metadata ? JSON.parse(row.metadata as string) : {},
-      created_at: row.created_at,
-    })),
-  });
-});
-
-// POST /import — import bank data from a template
-bank.post('/import', async (c) => {
-  const bankId = c.req.param('bank_id')!;
-  const dryRun = c.req.query('dry_run') === 'true';
-  const template = await c.req.json<{
-    version?: string;
-    bank?: Record<string, unknown>;
-    memories?: Array<Record<string, unknown>>;
-    entities?: Array<Record<string, unknown>>;
-    directives?: Array<Record<string, unknown>>;
-  }>();
-
-  // Validate import size limits
-  const MAX_IMPORT_MEMORIES = 10000;
-  const MAX_IMPORT_ENTITIES = 5000;
-  const MAX_IMPORT_DIRECTIVES = 500;
-
-  if (template.memories && template.memories.length > MAX_IMPORT_MEMORIES) {
-    return c.json({ error: 'validation_error', message: `memories array exceeds maximum of ${MAX_IMPORT_MEMORIES}` }, 400);
-  }
-  if (template.entities && template.entities.length > MAX_IMPORT_ENTITIES) {
-    return c.json({ error: 'validation_error', message: `entities array exceeds maximum of ${MAX_IMPORT_ENTITIES}` }, 400);
-  }
-  if (template.directives && template.directives.length > MAX_IMPORT_DIRECTIVES) {
-    return c.json({ error: 'validation_error', message: `directives array exceeds maximum of ${MAX_IMPORT_DIRECTIVES}` }, 400);
-  }
-
-  const summary = {
-    bank_updated: false,
-    memories_imported: 0,
-    entities_imported: 0,
-    directives_imported: 0,
-  };
-
-  if (dryRun) {
-    // Just count what would be imported
-    if (template.bank) summary.bank_updated = true;
-    summary.memories_imported = template.memories?.length ?? 0;
-    summary.entities_imported = template.entities?.length ?? 0;
-    summary.directives_imported = template.directives?.length ?? 0;
-
-    return c.json({ dry_run: true, summary });
-  }
-
-  const { ensureBank } = await import('./routes/banks');
-  await ensureBank(c.env.DB, bankId);
-
-  // Import bank profile
-  if (template.bank) {
-    const b = template.bank;
-    if (b.disposition || b.mission) {
-      const updates: string[] = [];
-      const vals: unknown[] = [];
-      if (b.disposition) {
-        updates.push('disposition = ?');
-        vals.push(typeof b.disposition === 'string' ? b.disposition : JSON.stringify(b.disposition));
-      }
-      if (b.mission) {
-        updates.push('mission = ?');
-        vals.push(b.mission);
-      }
-      if (b.name) {
-        updates.push('name = ?');
-        vals.push(b.name);
-      }
-      updates.push("updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')");
-      vals.push(bankId);
-      await c.env.DB.prepare(`UPDATE banks SET ${updates.join(', ')} WHERE bank_id = ?`)
-        .bind(...vals)
-        .run();
-      summary.bank_updated = true;
-    }
-  }
-
-  // Import directives
-  if (template.directives) {
-    for (const d of template.directives) {
-      const id = crypto.randomUUID();
-      await c.env.DB.prepare(
-        'INSERT INTO directives (id, bank_id, name, content, priority, is_active, tags) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-        .bind(id, bankId, d.name, d.content, d.priority ?? 0, d.is_active !== false ? 1 : 0, JSON.stringify(d.tags ?? []))
-        .run();
-      summary.directives_imported++;
-    }
-  }
-
-  // Import entities
-  if (template.entities) {
-    for (const e of template.entities) {
-      await c.env.DB.prepare(
-        'INSERT OR IGNORE INTO entities (id, canonical_name, bank_id, metadata, mention_count) VALUES (?, ?, ?, ?, ?)',
-      )
-        .bind(e.id ?? crypto.randomUUID(), e.canonical_name, bankId, JSON.stringify(e.metadata ?? {}), e.mention_count ?? 1)
-        .run();
-      summary.entities_imported++;
-    }
-  }
-
-  // Import memories (without re-embedding — raw import)
-  if (template.memories) {
-    for (const m of template.memories) {
-      await c.env.DB.prepare(
-        'INSERT OR IGNORE INTO memory_units (id, bank_id, text, context, event_date, fact_type, metadata, tags, proof_count, source_memory_ids) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-        .bind(
-          m.id ?? crypto.randomUUID(),
-          bankId,
-          m.text,
-          m.context ?? '',
-          m.event_date ?? new Date().toISOString(),
-          m.fact_type ?? 'world',
-          JSON.stringify(m.metadata ?? {}),
-          JSON.stringify(m.tags ?? []),
-          m.proof_count ?? 1,
-          JSON.stringify(m.source_memory_ids ?? []),
-        )
-        .run();
-      summary.memories_imported++;
-    }
-  }
-
-  return c.json({ dry_run: false, summary });
-});
+// Bank template export/import (upstream-compatible BankTemplateManifest format)
+bank.route('/', bankTemplatesRoutes);
 
 // Bank profile & config (sub-routes of banks)
 bank.route('/', banksRoutes);
@@ -736,6 +559,9 @@ api.route('/banks/:bank_id', bank);
 
 // Mount API under /v1/:tenant (e.g. /v1/default, /v1/acme, etc.)
 app.route('/v1/:tenant', api);
+
+// Admin backup/restore (separate auth via ADMIN_KEY secret)
+app.route('/admin', adminRoutes);
 
 // GET /v1/bank-template-schema — JSON Schema for the bank template manifest format
 // Global route (not tenant-scoped), used to validate template manifests before importing.
