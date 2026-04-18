@@ -70,6 +70,8 @@ export interface ReflectRequest {
   tags?: string[] | null;
   tags_match?: TagsMatch;
   tag_groups?: TagGroup[] | null;
+  /** Per-request override of the Workers AI model used for tool-calling reflection. */
+  model?: string;
 }
 
 // =============================================================================

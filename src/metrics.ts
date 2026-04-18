@@ -161,7 +161,7 @@ async function getD1Counts(db: D1Database) {
 async function queryAnalyticsEngine(
   accountId: string,
   apiToken: string,
-  dataset: string,
+  _dataset: string,
   sql: string,
 ): Promise<Record<string, unknown>[] | null> {
   try {

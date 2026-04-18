@@ -21,6 +21,8 @@ export interface ReflectConfig {
   includeToolOutput?: boolean;
   maxContextTokens?: number;
   wallTimeoutMs?: number;
+  /** Override the LLM used for tool-calling during reflect. Defaults to env.DEFAULT_LLM_MODEL. */
+  model?: string;
 }
 
 export const DEFAULT_REFLECT_MAX_CONTEXT_TOKENS = 100_000;

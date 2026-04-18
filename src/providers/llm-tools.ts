@@ -67,6 +67,8 @@ export async function llmChatWithTools(
     maxTokens?: number;
     temperature?: number;
     toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
+    /** Per-call model override. Falls back to env.DEFAULT_LLM_MODEL. */
+    model?: string;
   },
 ): Promise<ToolCallResponse> {
   if (env.EXTERNAL_LLM_BASE_URL && env.OPENAI_API_KEY) {
@@ -163,9 +165,10 @@ async function callWorkersAIWithTools(
     maxTokens?: number;
     temperature?: number;
     toolChoice?: 'auto' | 'none' | { type: 'function'; function: { name: string } };
+    model?: string;
   },
 ): Promise<ToolCallResponse> {
-  const model = env.DEFAULT_LLM_MODEL;
+  const model = options?.model ?? env.DEFAULT_LLM_MODEL;
 
   // Sanitize messages for Workers AI binding schema validation
   const sanitizedMessages: Array<{ role: string; content: string }> = messages.map((m) => {

@@ -103,7 +103,6 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
   let finalAnswer: string | null = null;
   let doneMemoryIds: string[] = [];
   let doneMentalModelIds: string[] = [];
-  let doneObservationIds: string[] = [];
 
   // ==========================================================================
   // Agent Loop
@@ -131,6 +130,7 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
       maxTokens: config.maxTokens ?? 4096,
       temperature: 0.1,
       toolChoice,
+      model: config.model,
     });
     const llmDuration = Date.now() - llmStart;
 
@@ -194,7 +194,6 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
         finalAnswer = cleanAnswer(String(args.answer ?? ''));
         doneMemoryIds = (args.memory_ids ?? []) as string[];
         doneMentalModelIds = (args.mental_model_ids ?? []) as string[];
-        doneObservationIds = (args.observation_ids ?? []) as string[];
       }
     }
 

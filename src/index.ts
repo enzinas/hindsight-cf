@@ -207,6 +207,7 @@ bank.post('/reflect', async (c) => {
       includeFacts: body.include?.facts === undefined ? true : !!body.include.facts,
       includeToolCalls: body.include?.tool_calls !== undefined,
       includeToolOutput: body.include?.tool_calls?.output ?? false,
+      model: body.model,
     });
 
     writeOperationMetric(c.env, 'reflect', bankId, 'success', Date.now() - start);
