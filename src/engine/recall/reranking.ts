@@ -8,6 +8,7 @@
  */
 
 import type { Env } from '../../env';
+import { aiRunWithRetry } from '../../providers/ai-retry';
 import type { MergedCandidate, ScoredResult } from './types';
 
 /**
@@ -55,7 +56,7 @@ export async function rerankCandidates(
   try {
     // Call Workers AI reranker
     const model = env.DEFAULT_RERANKER_MODEL;
-    const result = await env.AI.run(model as Parameters<Ai['run']>[0], {
+    const result = await aiRunWithRetry(env, model as Parameters<Ai['run']>[0], {
       query,
       documents,
     });

@@ -5,6 +5,7 @@
  */
 
 import type { Env } from '../env';
+import { aiRunWithRetry } from './ai-retry';
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -64,7 +65,7 @@ async function callWorkersAI(
 ): Promise<LLMResponse> {
   const model = env.DEFAULT_LLM_MODEL;
 
-  const result = await env.AI.run(model as Parameters<Ai['run']>[0], {
+  const result = await aiRunWithRetry(env, model as Parameters<Ai['run']>[0], {
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
     max_tokens: options?.maxTokens ?? 4096,
     temperature: options?.temperature ?? 0.1,

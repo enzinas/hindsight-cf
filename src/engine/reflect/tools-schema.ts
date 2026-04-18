@@ -96,46 +96,54 @@ export const EXPAND_TOOL: ToolDefinition = {
   },
 };
 
-export function buildDoneTool(hasDirectives: boolean): ToolDefinition {
+export function buildDoneTool(hasDirectives: boolean, directiveRules?: string[]): ToolDefinition {
+  const answerDesc = hasDirectives && directiveRules?.length
+    ? `Your response as well-formatted markdown. Use headers, lists, bold/italic, and code blocks for clarity. NEVER include memory IDs, UUIDs, or 'Memory references' in this text - put IDs only in memory_ids array. Write in the SAME language as the user's question. MANDATORY: Your answer MUST comply with ALL directives:\n${directiveRules.map((r, i) => `  ${i + 1}. ${r}`).join('\n')}`
+    : 'Your response as well-formatted markdown. Use headers, lists, bold/italic, and code blocks for clarity. NEVER include memory IDs, UUIDs, or \'Memory references\' in this text - put IDs only in memory_ids array. Write in the SAME language as the user\'s question.';
+
   const properties: Record<string, unknown> = {
     answer: {
       type: 'string',
-      description: 'Your final answer in markdown format. Be thorough and cite specific facts.',
+      description: answerDesc,
     },
     memory_ids: {
       type: 'array',
       items: { type: 'string' },
-      description: 'IDs of memories that support your answer',
+      description: 'Copy the "id" values from recall results here. Example: ["abc-123", "def-456"]. Put IDs here, NOT in answer text.',
     },
     mental_model_ids: {
       type: 'array',
       items: { type: 'string' },
-      description: 'IDs of mental models used in your answer',
+      description: 'Copy the "id" values from search_mental_models results here.',
     },
     observation_ids: {
       type: 'array',
       items: { type: 'string' },
-      description: 'IDs of observations used in your answer',
+      description: 'Copy the "id" values from search_observations results here.',
     },
   };
+
+  const required: string[] = ['answer'];
 
   if (hasDirectives) {
     properties.directive_compliance = {
       type: 'string',
-      description: 'Brief explanation of how your answer complies with the active directives',
+      description: `REQUIRED: Confirm your answer complies with ALL directives. Format: 'Directive 1: [how answer complies]. Directive 2: [how answer complies]...'`,
     };
+    required.push('directive_compliance');
   }
 
   return {
     type: 'function',
     function: {
       name: 'done',
-      description:
-        'Submit your final answer. Call this when you have gathered enough evidence to answer the question comprehensively.',
+      description: hasDirectives
+        ? 'Signal completion with your final answer. IMPORTANT: You must confirm directive compliance before submitting. Your answer will be REJECTED if it violates any directive.'
+        : 'Signal completion with your final answer. Use this when you have gathered enough information to answer the question.',
       parameters: {
         type: 'object',
         properties,
-        required: ['answer'],
+        required,
       },
     },
   };
@@ -144,7 +152,11 @@ export function buildDoneTool(hasDirectives: boolean): ToolDefinition {
 /**
  * Get all tools for the reflect agent.
  */
-export function getReflectTools(options: { hasMentalModels: boolean; hasDirectives: boolean }): ToolDefinition[] {
+export function getReflectTools(options: {
+  hasMentalModels: boolean;
+  hasDirectives: boolean;
+  directiveRules?: string[];
+}): ToolDefinition[] {
   const tools: ToolDefinition[] = [];
 
   if (options.hasMentalModels) {
@@ -154,7 +166,7 @@ export function getReflectTools(options: { hasMentalModels: boolean; hasDirectiv
   tools.push(SEARCH_OBSERVATIONS_TOOL);
   tools.push(RECALL_TOOL);
   tools.push(EXPAND_TOOL);
-  tools.push(buildDoneTool(options.hasDirectives));
+  tools.push(buildDoneTool(options.hasDirectives, options.directiveRules));
 
   return tools;
 }

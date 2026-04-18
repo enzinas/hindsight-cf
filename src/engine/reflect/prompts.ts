@@ -93,10 +93,11 @@ export function buildReflectSystemPrompt(
   parts.push('5. Call done() with your answer and all supporting evidence IDs');
 
   parts.push('\nIMPORTANT:');
-  parts.push('- ALWAYS gather evidence before answering');
-  parts.push('- Include memory IDs in your done() call to cite your sources');
+  parts.push('- ALWAYS gather evidence before answering — never answer from your own knowledge');
+  parts.push('- When calling done(), copy the "id" fields from search results into memory_ids/observation_ids/mental_model_ids arrays');
+  parts.push('- NEVER put IDs or UUIDs in your answer text — only in the ID arrays');
   parts.push('- If you cannot find relevant information, say so honestly');
-  parts.push('- Be concise but thorough');
+  parts.push('- Format your answer as well-structured markdown');
 
   // Directives again at END (for recency effect)
   if (directives.length > 0) {

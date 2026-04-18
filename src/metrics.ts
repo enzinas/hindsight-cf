@@ -9,14 +9,14 @@
  * If the read secrets are missing, GET /metrics falls back to D1 counts.
  *
  * Data-point layout (one row per event):
- *   index1  = event type: "http" | "operation" | "llm"
- *   blob1   = operation name or HTTP method  (e.g. "retain", "POST")
- *   blob2   = status ("success" | "error") or HTTP status code
- *   blob3   = bank_id (or endpoint path for http events)
- *   blob4   = extra detail (model name for llm, endpoint for http)
- *   double1 = duration in milliseconds
- *   double2 = input tokens  (llm events only)
- *   double3 = output tokens (llm events only)
+ *   index1  = event type: "http" | "operation" | "llm" | "ai_retry"
+ *   blob1   = operation name / HTTP method / model  (ai_retry: model name)
+ *   blob2   = status / HTTP status code / error code  (ai_retry: "3043" | "3040")
+ *   blob3   = bank_id / endpoint  (ai_retry: outcome "recovered" | "exhausted")
+ *   blob4   = extra detail (model for llm, endpoint for http, null for ai_retry)
+ *   double1 = duration in milliseconds  (ai_retry: total wall time incl. retries)
+ *   double2 = input tokens (llm)  /  attempt count (ai_retry, 1-based final attempt)
+ *   double3 = output tokens (llm) /  unused for ai_retry
  */
 import type { Env } from './env';
 
@@ -51,6 +51,28 @@ export function writeOperationMetric(
     indexes: ['operation'],
     blobs: [operation, status, bankId, null],
     doubles: [durationMs, 0, 0],
+  });
+}
+
+/**
+ * Record a Workers AI retry event.
+ *
+ * Emitted once per call that encountered at least one retryable error
+ * (3043 or 3040). Not emitted for clean single-attempt successes — those
+ * already appear in the LLM metric stream.
+ */
+export function writeAiRetryMetric(
+  env: Env,
+  model: string,
+  errorCode: '3043' | '3040' | 'other',
+  outcome: 'recovered' | 'exhausted',
+  totalDurationMs: number,
+  attemptCount: number,
+) {
+  env.ANALYTICS?.writeDataPoint({
+    indexes: ['ai_retry'],
+    blobs: [model, errorCode, outcome, null],
+    doubles: [totalDurationMs, attemptCount, 0],
   });
 }
 
@@ -95,6 +117,18 @@ interface MetricsSummary {
     total_input_tokens: number;
     total_output_tokens: number;
     avg_duration_ms: number;
+  } | null;
+  ai_retry: {
+    /** Events where at least one retry was needed (i.e., at least one 3043/3040 hit). */
+    total_events: number;
+    /** Breakdown by error code — typically dominated by 3043. */
+    by_error_code: Record<string, number>;
+    /** Breakdown by outcome (recovered after retry vs. exhausted and failed). */
+    by_outcome: Record<string, number>;
+    /** Recovery rate: recovered / (recovered + exhausted). 1.0 = perfect. */
+    recovery_rate: number;
+    /** Affected Workers AI models. */
+    by_model: Record<string, number>;
   } | null;
   d1: {
     banks: number;
@@ -175,6 +209,7 @@ export async function getMetricsSummary(env: Env): Promise<MetricsSummary> {
       http: null,
       operations: null,
       llm: null,
+      ai_retry: null,
       d1,
     };
   }
@@ -183,7 +218,7 @@ export async function getMetricsSummary(env: Env): Promise<MetricsSummary> {
   const period = 'last 24 hours';
 
   // Run queries in parallel
-  const [httpRows, opsRows, llmRows] = await Promise.all([
+  const [httpRows, opsRows, llmRows, retryRows] = await Promise.all([
     queryAnalyticsEngine(
       accountId,
       apiToken,
@@ -224,6 +259,20 @@ export async function getMetricsSummary(env: Env): Promise<MetricsSummary> {
       FROM ${dataset}
       WHERE index1 = 'llm'
         AND timestamp > NOW() - INTERVAL '24' HOUR`,
+    ),
+    queryAnalyticsEngine(
+      accountId,
+      apiToken,
+      dataset,
+      `SELECT
+        blob1 AS model,
+        blob2 AS error_code,
+        blob3 AS outcome,
+        COUNT() AS cnt
+      FROM ${dataset}
+      WHERE index1 = 'ai_retry'
+        AND timestamp > NOW() - INTERVAL '24' HOUR
+      GROUP BY model, error_code, outcome`,
     ),
   ]);
 
@@ -287,12 +336,42 @@ export async function getMetricsSummary(env: Env): Promise<MetricsSummary> {
     };
   }
 
+  // Aggregate ai_retry metrics
+  let ai_retry: MetricsSummary['ai_retry'] = null;
+  if (retryRows && retryRows.length > 0) {
+    const byError: Record<string, number> = {};
+    const byOutcome: Record<string, number> = {};
+    const byModel: Record<string, number> = {};
+    let total = 0;
+    for (const row of retryRows) {
+      const cnt = Number(row.cnt) || 0;
+      total += cnt;
+      const model = String(row.model);
+      const code = String(row.error_code);
+      const outcome = String(row.outcome);
+      byError[code] = (byError[code] || 0) + cnt;
+      byOutcome[outcome] = (byOutcome[outcome] || 0) + cnt;
+      byModel[model] = (byModel[model] || 0) + cnt;
+    }
+    const recovered = byOutcome['recovered'] || 0;
+    const exhausted = byOutcome['exhausted'] || 0;
+    const denom = recovered + exhausted;
+    ai_retry = {
+      total_events: total,
+      by_error_code: byError,
+      by_outcome: byOutcome,
+      recovery_rate: denom > 0 ? Number((recovered / denom).toFixed(4)) : 1,
+      by_model: byModel,
+    };
+  }
+
   return {
     analytics_engine: true,
     period,
     http,
     operations,
     llm,
+    ai_retry,
     d1,
   };
 }

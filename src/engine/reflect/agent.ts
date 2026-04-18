@@ -11,7 +11,7 @@
 import type { Env } from '../../env';
 import type { DispositionTraits } from '../../types';
 import type { ReflectConfig, ReflectResult, ReflectToolTrace, ReflectLLMTrace, BasedOn } from './types';
-import { BUDGET_ITERATIONS } from './types';
+import { BUDGET_ITERATIONS, DEFAULT_REFLECT_MAX_CONTEXT_TOKENS, DEFAULT_REFLECT_WALL_TIMEOUT_MS } from './types';
 import { buildReflectSystemPrompt, buildFinalPrompt } from './prompts';
 import { getReflectTools } from './tools-schema';
 import { executeTool } from './tools';
@@ -27,6 +27,9 @@ import { llmChat, type ChatMessage } from '../../providers/llm';
  */
 export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectResult> {
   const maxIterations = BUDGET_ITERATIONS[config.budget] ?? 7;
+  const maxContextTokens = config.maxContextTokens ?? DEFAULT_REFLECT_MAX_CONTEXT_TOKENS;
+  const wallTimeoutMs = config.wallTimeoutMs ?? DEFAULT_REFLECT_WALL_TIMEOUT_MS;
+  const wallStart = Date.now();
   const toolTraces: ReflectToolTrace[] = [];
   const llmTraces: ReflectLLMTrace[] = [];
   let totalInput = 0;
@@ -78,6 +81,7 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
   const tools = getReflectTools({
     hasMentalModels,
     hasDirectives: directives.length > 0,
+    directiveRules: directives.map((d) => `[${d.name}]: ${d.content}`),
   });
 
   // Build initial messages
@@ -105,7 +109,13 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
   // Agent Loop
   // ==========================================================================
   for (let iteration = 0; iteration < maxIterations; iteration++) {
-    const isLastIteration = iteration === maxIterations - 1;
+    const hasRetrieved =
+      retrievedMemoryIds.size > 0 || retrievedMentalModelIds.size > 0 || retrievedObservationIds.size > 0;
+    const wallExceeded = Date.now() - wallStart >= wallTimeoutMs;
+    const contextExceeded = estimateMessagesTokens(messages) >= maxContextTokens;
+    const forceFinal = (wallExceeded || contextExceeded) && hasRetrieved;
+
+    const isLastIteration = iteration === maxIterations - 1 || forceFinal;
 
     // Determine tool_choice based on iteration (hierarchical retrieval)
     const toolChoice = getToolChoice(iteration, hasMentalModels, isLastIteration);
@@ -197,10 +207,18 @@ export async function reflect(env: Env, config: ReflectConfig): Promise<ReflectR
   }
 
   // Validate cited IDs (filter hallucinated ones)
-  const validMemoryIds = doneMemoryIds.filter((id) => retrievedMemoryIds.has(id));
-  const validMentalModelIds = doneMentalModelIds.filter((id) => retrievedMentalModelIds.has(id));
-  // Observation IDs validated against retrieved set (for future use in basedOn)
-  doneObservationIds.filter((id) => retrievedObservationIds.has(id));
+  let validMemoryIds = doneMemoryIds.filter((id) => retrievedMemoryIds.has(id));
+  let validMentalModelIds = doneMentalModelIds.filter((id) => retrievedMentalModelIds.has(id));
+
+  // Fallback: if the model didn't pass IDs through the done tool (common with
+  // some Workers AI models like Qwen3), use all retrieved IDs as based_on.
+  // The model searched for these during the reflect loop, so they're relevant.
+  if (validMemoryIds.length === 0 && retrievedMemoryIds.size > 0) {
+    validMemoryIds = [...retrievedMemoryIds];
+  }
+  if (validMentalModelIds.length === 0 && retrievedMentalModelIds.size > 0) {
+    validMentalModelIds = [...retrievedMentalModelIds];
+  }
 
   // Build based_on with hydrated data
   let basedOn: BasedOn | null = null;
@@ -271,6 +289,24 @@ function getToolChoice(
 }
 
 /**
+ * Rough token estimate for the accumulated message list.
+ *
+ * Workers AI doesn't expose a tokenizer, so we use the ~4 chars/token heuristic
+ * that tiktoken-cl100k averages out to on mixed English+JSON. Good enough for a
+ * context-budget guard — overshoots slightly, which is the safe direction.
+ */
+function estimateMessagesTokens(messages: ToolChatMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    const content = (m as { content?: string | null }).content;
+    if (typeof content === 'string') chars += content.length;
+    const toolCalls = (m as { tool_calls?: unknown[] }).tool_calls;
+    if (Array.isArray(toolCalls)) chars += JSON.stringify(toolCalls).length;
+  }
+  return Math.ceil(chars / 4);
+}
+
+/**
  * Clean LLM answer text of common artifacts.
  */
 function cleanAnswer(text: string): string {
@@ -278,9 +314,15 @@ function cleanAnswer(text: string): string {
     text
       // Remove leaked JSON tool call syntax
       .replace(/\{"tool_call"[\s\S]*?\}/g, '')
+      // Remove thinking tags
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      // Remove <final_answer> wrapper tags
+      .replace(/<\/?final_answer>/g, '')
       // Remove markdown code fence artifacts
       .replace(/```(?:json)?\s*\n?/g, '')
       .replace(/\n?\s*```/g, '')
+      // Remove "Supporting Evidence:" footer with IDs (now in structured data)
+      .replace(/\n\n\*\*Supporting Evidence\*\*:[\s\S]*$/g, '')
       .trim()
   );
 }

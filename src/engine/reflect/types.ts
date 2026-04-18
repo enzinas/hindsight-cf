@@ -19,7 +19,12 @@ export interface ReflectConfig {
   includeFacts?: boolean;
   includeToolCalls?: boolean;
   includeToolOutput?: boolean;
+  maxContextTokens?: number;
+  wallTimeoutMs?: number;
 }
+
+export const DEFAULT_REFLECT_MAX_CONTEXT_TOKENS = 100_000;
+export const DEFAULT_REFLECT_WALL_TIMEOUT_MS = 300_000;
 
 export interface ReflectToolTrace {
   tool: string;

@@ -28,6 +28,7 @@
  */
 
 import type { Env } from '../../env';
+import { aiRunWithRetry } from '../../providers/ai-retry';
 import type { RetainContent, StrategyConfig } from './types';
 import { retainBatch } from './orchestrator';
 
@@ -232,7 +233,8 @@ async function describeWithVision(env: Env, blob: Blob, fileName: string): Promi
   const imageData = [...new Uint8Array(buffer)];
 
   const visionModel = env.DEFAULT_VISION_MODEL || '@cf/meta/llama-3.2-11b-vision-instruct';
-  const result = await env.AI.run(
+  const result = await aiRunWithRetry(
+    env,
     visionModel as Parameters<typeof env.AI.run>[0],
     {
       messages: [
@@ -275,7 +277,8 @@ async function transcribeAudio(env: Env, r2Object: R2ObjectBody, fileName: strin
   const audioData = [...new Uint8Array(buffer)];
 
   const speechModel = env.DEFAULT_SPEECH_MODEL || '@cf/openai/whisper';
-  const result = await env.AI.run(
+  const result = await aiRunWithRetry(
+    env,
     speechModel as Parameters<typeof env.AI.run>[0],
     { audio: audioData } as Parameters<typeof env.AI.run>[1],
   );

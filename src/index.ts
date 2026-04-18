@@ -204,7 +204,7 @@ bank.post('/reflect', async (c) => {
       tags: body.tags,
       tagsMatch: body.tags_match,
       tagGroups: body.tag_groups,
-      includeFacts: body.include?.facts !== undefined,
+      includeFacts: body.include?.facts === undefined ? true : !!body.include.facts,
       includeToolCalls: body.include?.tool_calls !== undefined,
       includeToolOutput: body.include?.tool_calls?.output ?? false,
     });

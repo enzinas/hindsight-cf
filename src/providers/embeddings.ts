@@ -5,6 +5,7 @@
  */
 
 import type { Env } from '../env';
+import { aiRunWithRetry } from './ai-retry';
 
 /**
  * Generate embeddings for a batch of texts.
@@ -17,7 +18,7 @@ export async function generateEmbeddings(env: Env, texts: string[]): Promise<num
   const model = env.DEFAULT_EMBEDDING_MODEL;
 
   // Workers AI embedding models accept { text: string[] }
-  const result = await env.AI.run(model as Parameters<Ai['run']>[0], {
+  const result = await aiRunWithRetry(env, model as Parameters<Ai['run']>[0], {
     text: texts,
   });
 
